@@ -1,0 +1,66 @@
+import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import { shiftPresets } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
+
+// GET all presets for a calendar
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const calendarId = searchParams.get("calendarId");
+
+    if (!calendarId) {
+      return NextResponse.json(
+        { error: "calendarId is required" },
+        { status: 400 }
+      );
+    }
+
+    const presets = await db
+      .select()
+      .from(shiftPresets)
+      .where(eq(shiftPresets.calendarId, calendarId));
+    return NextResponse.json(presets);
+  } catch (error) {
+    console.error("Error fetching presets:", error);
+    return NextResponse.json(
+      { error: "Failed to fetch presets" },
+      { status: 500 }
+    );
+  }
+}
+
+// POST create a new preset
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { calendarId, title, startTime, endTime, color, notes } = body;
+
+    if (!calendarId || !title || !startTime || !endTime) {
+      return NextResponse.json(
+        { error: "Missing required fields" },
+        { status: 400 }
+      );
+    }
+
+    const [preset] = await db
+      .insert(shiftPresets)
+      .values({
+        calendarId,
+        title,
+        startTime,
+        endTime,
+        color: color || "#3b82f6",
+        notes: notes || null,
+      })
+      .returning();
+
+    return NextResponse.json(preset);
+  } catch (error) {
+    console.error("Error creating preset:", error);
+    return NextResponse.json(
+      { error: "Failed to create preset" },
+      { status: 500 }
+    );
+  }
+}

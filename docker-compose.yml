@@ -1,0 +1,26 @@
+services:
+  bettershift:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bettershift
+    restart: unless-stopped
+    # Ports are defined in the override file
+    volumes:
+      # Mount data directory for persistent SQLite database
+      - ./data:/app/data
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=file:./data/sqlite.db
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://localhost:3000', (r) => process.exit(r.statusCode === 200 ? 0 : 1))",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
