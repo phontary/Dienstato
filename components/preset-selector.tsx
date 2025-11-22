@@ -394,11 +394,11 @@ export function PresetSelector({
 
       {/* Manage Presets Dialog */}
       <Dialog open={showManageDialog} onOpenChange={setShowManageDialog}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[500px] max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Manage Presets</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3">
+          <div className="space-y-3 overflow-y-auto flex-1 pr-2">
             <Button
               onClick={handleCreateNew}
               className="w-full"
