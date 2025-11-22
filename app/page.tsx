@@ -14,6 +14,12 @@ import { ManagePasswordDialog } from "@/components/manage-password-dialog";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Plus,
   ChevronLeft,
   ChevronRight,
@@ -56,6 +62,8 @@ function HomeContent() {
   const [showShiftDialog, setShowShiftDialog] = useState(false);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [showManagePasswordDialog, setShowManagePasswordDialog] =
+    useState(false);
+  const [showMobileCalendarDialog, setShowMobileCalendarDialog] =
     useState(false);
   const [pendingAction, setPendingAction] = useState<{
     type: "delete" | "edit";
@@ -405,28 +413,128 @@ function HomeContent() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-background border-b">
-        <div className="container max-w-4xl mx-auto p-3 sm:p-4 space-y-3 sm:space-y-4">
-          <h1 className="text-xl sm:text-2xl font-bold">{t("app.title")}</h1>
-          <CalendarSelector
-            calendars={calendars}
-            selectedId={selectedCalendar}
-            onSelect={setSelectedCalendar}
-            onCreateNew={() => setShowCalendarDialog(true)}
-            onManagePassword={() => setShowManagePasswordDialog(true)}
-          />
-          <PresetSelector
-            presets={presets}
-            selectedPresetId={selectedPresetId}
-            onSelectPreset={setSelectedPresetId}
-            onPresetsChange={fetchPresets}
-            onShiftsChange={fetchShifts}
-            calendarId={selectedCalendar || ""}
-            onPasswordRequired={handlePresetPasswordRequired}
-          />
+      {/* Header - Desktop: Horizontal, Mobile: Compact with Dialog */}
+      <div className="sticky top-0 z-10 bg-gradient-to-b from-background via-background to-background/95 border-b shadow-sm">
+        <div className="container max-w-4xl mx-auto p-3 sm:p-4">
+          <div className="space-y-3 sm:space-y-4">
+            {/* Desktop: Logo + Calendar Selector in one line */}
+            <div className="hidden sm:flex items-center justify-between gap-4">
+              {/* Logo Section */}
+              <div className="flex items-center gap-3">
+                <div className="relative shrink-0">
+                  <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-primary via-primary/90 to-primary/70 flex items-center justify-center shadow-lg shadow-primary/20 ring-2 ring-primary/10">
+                    <CalendarIcon className="h-5 w-5 text-primary-foreground" />
+                  </div>
+                  <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-background"></div>
+                </div>
+                <div>
+                  <h1 className="text-xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+                    {t("app.title")}
+                  </h1>
+                  <p className="text-xs text-muted-foreground">
+                    {t("app.subtitle", { default: "Organize your shifts" })}
+                  </p>
+                </div>
+              </div>
+
+              {/* Calendar Selector - Desktop */}
+              <div className="flex items-center gap-2 min-w-0 flex-1 max-w-md">
+                <div className="w-1 h-8 bg-primary rounded-full"></div>
+                <div className="flex-1 min-w-0">
+                  <CalendarSelector
+                    calendars={calendars}
+                    selectedId={selectedCalendar}
+                    onSelect={setSelectedCalendar}
+                    onCreateNew={() => setShowCalendarDialog(true)}
+                    onManagePassword={() => setShowManagePasswordDialog(true)}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Mobile: Logo Icon + Calendar Card */}
+            <div className="sm:hidden flex items-center gap-2">
+              {/* Logo Icon Only */}
+              <div className="relative shrink-0">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary via-primary/90 to-primary/70 flex items-center justify-center shadow-lg shadow-primary/20 ring-2 ring-primary/10">
+                  <CalendarIcon className="h-4.5 w-4.5 text-primary-foreground" />
+                </div>
+                <div className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-background"></div>
+              </div>
+
+              {/* Calendar Selection Card */}
+              <button
+                onClick={() => setShowMobileCalendarDialog(true)}
+                className="flex-1 bg-card/50 backdrop-blur-sm border rounded-lg p-2.5 flex items-center justify-between gap-2 hover:bg-accent/50 transition-colors active:scale-[0.98]"
+              >
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <div className="w-1 h-8 bg-primary rounded-full"></div>
+                  <div className="min-w-0 flex-1 text-left">
+                    <p className="text-[10px] text-muted-foreground font-medium">
+                      {t("calendar.select", {
+                        default: "Your BetterShift Calendar",
+                      })}
+                    </p>
+                    <p className="text-sm font-semibold truncate">
+                      {calendars.find((c) => c.id === selectedCalendar)?.name ||
+                        t("calendar.title")}
+                    </p>
+                  </div>
+                </div>
+                <div className="shrink-0 w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center">
+                  <CalendarIcon className="h-4 w-4 text-primary" />
+                </div>
+              </button>
+            </div>
+
+            {/* Preset Selector - Aligned properly */}
+            <div className="px-0.5 sm:px-0">
+              <PresetSelector
+                presets={presets}
+                selectedPresetId={selectedPresetId}
+                onSelectPreset={setSelectedPresetId}
+                onPresetsChange={fetchPresets}
+                onShiftsChange={fetchShifts}
+                calendarId={selectedCalendar || ""}
+                onPasswordRequired={handlePresetPasswordRequired}
+              />
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* Mobile Calendar Dialog */}
+      <Dialog
+        open={showMobileCalendarDialog}
+        onOpenChange={setShowMobileCalendarDialog}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div className="w-1 h-5 bg-primary rounded-full"></div>
+              {t("calendar.select", { default: "Your BetterShift Calendar" })}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <CalendarSelector
+              calendars={calendars}
+              selectedId={selectedCalendar}
+              onSelect={(id) => {
+                setSelectedCalendar(id);
+                setShowMobileCalendarDialog(false);
+              }}
+              onCreateNew={() => {
+                setShowMobileCalendarDialog(false);
+                setShowCalendarDialog(true);
+              }}
+              onManagePassword={() => {
+                setShowMobileCalendarDialog(false);
+                setShowManagePasswordDialog(true);
+              }}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Month Navigation */}
       <div className="container max-w-4xl mx-auto px-1 py-3 sm:p-4 flex-1">

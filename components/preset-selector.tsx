@@ -337,7 +337,7 @@ export function PresetSelector({
                 </span>
               </Button>
               {showSecondary && (
-                <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap pl-2">
+                <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                   {presets
                     .filter((p) => p.isSecondary)
                     .map((preset) => (

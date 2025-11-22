@@ -12,7 +12,8 @@
   },
   "app": {
     "title": "BetterShift",
-    "description": "Manage your work shifts with ease"
+    "description": "Manage your work shifts with ease",
+    "subtitle": "Organize your shifts"
   },
   "calendar": {
     "title": "Calendar",
@@ -22,7 +23,8 @@
     "color": "Color",
     "noCalendars": "No calendars yet",
     "createFirst": "Create your first calendar",
-    "managePassword": "Manage Password"
+    "managePassword": "Manage Password",
+    "select": "Your BetterShift Calendar"
   },
   "password": {
     "use": "Use password",
