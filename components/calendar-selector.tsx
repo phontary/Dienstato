@@ -10,7 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Plus, Settings, Trash2 } from "lucide-react";
+import { Plus, KeyRound, Trash2 } from "lucide-react";
 
 interface CalendarSelectorProps {
   calendars: CalendarWithCount[];
@@ -59,7 +59,7 @@ export function CalendarSelector({
           className="h-9 w-9 sm:h-10 sm:w-10"
           title={t("calendar.managePassword")}
         >
-          <Settings className="h-4 w-4" />
+          <KeyRound className="h-4 w-4" />
         </Button>
       )}
       {onDelete && selectedId && (

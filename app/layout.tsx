@@ -1,7 +1,8 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { NextIntlClientProvider } from "next-intl";
 import { getMessages, getLocale } from "next-intl/server";
+import { Toaster } from "sonner";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -19,6 +20,14 @@ export const metadata: Metadata = {
   description: "Manage your work shifts with ease",
 };
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  themeColor: [{ media: "(prefers-color-scheme: dark)", color: "#0a0a0a" }],
+};
+
 export default async function RootLayout({
   children,
 }: Readonly<{
@@ -34,6 +43,18 @@ export default async function RootLayout({
       >
         <NextIntlClientProvider messages={messages} locale={locale}>
           {children}
+          <Toaster
+            position="bottom-left"
+            richColors
+            closeButton
+            theme="dark"
+            toastOptions={{
+              className: "text-sm",
+              style: {
+                padding: "12px 16px",
+              },
+            }}
+          />
         </NextIntlClientProvider>
       </body>
     </html>

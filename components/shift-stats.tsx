@@ -27,7 +27,7 @@ export function ShiftStats({
   const [period, setPeriod] = useState<"week" | "month" | "year">("month");
   const [stats, setStats] = useState<ShiftStats | null>(null);
   const [loading, setLoading] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(true);
 
   useEffect(() => {
     if (calendarId) {
@@ -65,24 +65,28 @@ export function ShiftStats({
     : 0;
 
   return (
-    <div className="border rounded-lg bg-card/50 backdrop-blur-sm overflow-hidden">
+    <div className="border border-border/50 rounded-xl bg-gradient-to-b from-card/80 via-card/60 to-card/40 backdrop-blur-sm overflow-hidden shadow-lg">
       {/* Header */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full px-3 sm:px-4 py-2.5 sm:py-3 flex items-center justify-between hover:bg-accent/50 transition-colors"
+        className="w-full px-3 sm:px-4 py-3 sm:py-3.5 flex items-center justify-between hover:bg-primary/5 transition-all"
       >
-        <div className="flex items-center gap-2">
-          <BarChart3 className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
-          <h3 className="text-sm sm:text-base font-semibold">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center shadow-lg shadow-primary/20">
+            <BarChart3 className="h-4 w-4 sm:h-5 sm:w-5 text-primary-foreground" />
+          </div>
+          <h3 className="text-sm sm:text-base font-semibold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">
             {t("stats.title")}
           </h3>
-          {!isExpanded && stats && totalShifts > 0 && (
-            <span className="text-xs sm:text-sm text-muted-foreground">
-              ({totalShifts} {t("stats.shiftsTotal")})
-            </span>
-          )}
         </div>
         <div className="flex items-center gap-2">
+          {!isExpanded && stats && totalShifts > 0 && (
+            <div className="px-3 py-1.5 bg-primary/10 rounded-full">
+              <span className="font-semibold text-primary text-xs sm:text-sm">
+                {totalShifts}
+              </span>
+            </div>
+          )}
           {!isExpanded && stats && totalShifts > 0 && (
             <div className="hidden sm:flex gap-1.5">
               <span
@@ -136,14 +140,14 @@ export function ShiftStats({
 
       {/* Content */}
       {isExpanded && (
-        <div className="px-3 sm:px-4 pb-3 sm:pb-4 space-y-3 border-t">
+        <div className="px-3 sm:px-4 pb-3 sm:pb-4 space-y-4 border-t border-border/30 bg-muted/20">
           {/* Period Selector - Mobile and Desktop when expanded */}
-          <div className="flex gap-2 pt-3">
+          <div className="flex gap-2 pt-4">
             <Button
               variant={period === "week" ? "default" : "outline"}
               size="sm"
               onClick={() => setPeriod("week")}
-              className="flex-1 sm:flex-none"
+              className="flex-1 sm:flex-none h-9 transition-all shadow-sm"
             >
               {t("stats.week")}
             </Button>
@@ -151,7 +155,7 @@ export function ShiftStats({
               variant={period === "month" ? "default" : "outline"}
               size="sm"
               onClick={() => setPeriod("month")}
-              className="flex-1 sm:flex-none"
+              className="flex-1 sm:flex-none h-9 transition-all shadow-sm"
             >
               {t("stats.month")}
             </Button>
@@ -159,7 +163,7 @@ export function ShiftStats({
               variant={period === "year" ? "default" : "outline"}
               size="sm"
               onClick={() => setPeriod("year")}
-              className="flex-1 sm:flex-none"
+              className="flex-1 sm:flex-none h-9 transition-all shadow-sm"
             >
               {t("stats.year")}
             </Button>
@@ -167,16 +171,17 @@ export function ShiftStats({
 
           {/* Stats Display */}
           {loading ? (
-            <p className="text-sm text-muted-foreground py-4 text-center">
+            <p className="text-sm text-muted-foreground py-6 text-center">
               {t("common.loading")}
             </p>
           ) : stats && Object.keys(stats.stats).length > 0 ? (
-            <div className="space-y-3">
-              <div className="flex justify-between items-center pb-2 border-b">
-                <span className="font-semibold text-sm sm:text-base">
+            <div className="space-y-3.5">
+              <div className="flex justify-between items-center pb-2.5 border-b border-border/50">
+                <span className="font-semibold text-sm sm:text-base flex items-center gap-2">
+                  <div className="w-1 h-5 bg-gradient-to-b from-primary to-primary/50 rounded-full"></div>
                   {t("stats.total")}
                 </span>
-                <span className="font-bold text-lg sm:text-xl">
+                <span className="font-bold text-xl sm:text-2xl bg-gradient-to-r from-primary to-primary/70 bg-clip-text">
                   {totalShifts}
                 </span>
               </div>
@@ -185,21 +190,21 @@ export function ShiftStats({
                 .map(([title, count]) => (
                   <div
                     key={title}
-                    className="flex justify-between items-center gap-3"
+                    className="flex justify-between items-center gap-3 p-2.5 rounded-lg bg-muted/30 border border-border/30 hover:bg-muted/50 transition-colors"
                   >
-                    <span className="text-sm truncate flex-shrink min-w-0">
+                    <span className="text-sm font-medium truncate flex-shrink min-w-0">
                       {title}
                     </span>
                     <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-                      <div className="w-24 sm:w-32 h-2 bg-secondary rounded-full overflow-hidden">
+                      <div className="w-20 sm:w-28 h-2.5 bg-muted rounded-full overflow-hidden border border-border/30">
                         <div
-                          className="h-full bg-primary transition-all"
+                          className="h-full bg-gradient-to-r from-primary to-primary/80 transition-all shadow-sm"
                           style={{
                             width: `${(count / totalShifts) * 100}%`,
                           }}
                         />
                       </div>
-                      <span className="font-semibold text-sm w-6 sm:w-8 text-right">
+                      <span className="font-bold text-sm w-6 sm:w-8 text-right">
                         {count}
                       </span>
                     </div>
@@ -207,7 +212,7 @@ export function ShiftStats({
                 ))}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground py-4 text-center">
+            <p className="text-sm text-muted-foreground py-6 text-center">
               {t("stats.noData")}
             </p>
           )}

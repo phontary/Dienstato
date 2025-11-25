@@ -5,14 +5,11 @@
     "delete": "Löschen",
     "edit": "Bearbeiten",
     "create": "Erstellen",
-    "close": "Schließen",
-    "confirm": "Bestätigen",
     "loading": "Lädt...",
     "required": "erforderlich"
   },
   "app": {
     "title": "BetterShift",
-    "description": "Verwalte deine Arbeitsschichten mit Leichtigkeit",
     "subtitle": "Organisiere deine Schichten"
   },
   "calendar": {
@@ -23,17 +20,22 @@
     "name": "Kalendername",
     "namePlaceholder": "z.B. Meine Schichten",
     "color": "Farbe",
-    "noCalendars": "Noch keine Kalender",
-    "createFirst": "Erstelle deinen ersten Kalender",
     "managePassword": "Passwort verwalten",
     "select": "Dein BetterShift Kalender",
     "deleteCalendar": "Kalender löschen",
     "deleteConfirm": "Kalender \"{name}\" wirklich löschen? Alle Schichten, Presets und Notizen werden ebenfalls gelöscht.",
     "deleteWarning": "Diese Aktion kann nicht rückgängig gemacht werden. Alle Schichten, Presets und Notizen werden permanent gelöscht.",
-    "deleteSuccess": "Kalender erfolgreich gelöscht"
+    "created": "Kalender erfolgreich erstellt",
+    "deleted": "Kalender erfolgreich gelöscht",
+    "createError": "Kalender konnte nicht erstellt werden",
+    "deleteError": "Kalender konnte nicht gelöscht werden"
+  },
+  "color": {
+    "custom": "Eigene Farbe",
+    "customTitle": "Eigene Farbe wählen",
+    "customDescription": "Wähle eine eigene Farbe mit dem Farbwähler"
   },
   "password": {
-    "use": "Passwort verwenden",
     "optional": "Passwortschutz (optional)",
     "password": "Passwort",
     "passwordPlaceholder": "Passwort eingeben",
@@ -44,8 +46,6 @@
     "confirmPassword": "Passwort bestätigen",
     "confirmPasswordPlaceholder": "Passwort bestätigen",
     "removePassword": "Passwort entfernen",
-    "setPassword": "Passwort setzen",
-    "updatePassword": "Passwort aktualisieren",
     "manage": "Passwort für \"{name}\" verwalten",
     "enter": "Passwort für \"{name}\" eingeben",
     "enterCalendarPassword": "Kalenderpasswort eingeben",
@@ -57,15 +57,18 @@
     "unlock": "Entsperren"
   },
   "note": {
-    "title": "Notizen",
     "create": "Neue Notiz",
     "edit": "Notiz bearbeiten",
-    "delete": "Notiz löschen",
     "note": "Notiz",
     "notePlaceholder": "z.B. Frühdienst weil nachmittags Friseur...",
-    "hint": "Notizen zu Tagen hinzufügen",
     "hintMobile": "Langes Drücken auf einen Tag öffnet Notizen. Das Notiz-Icon zeigt vorhandene Notizen an.",
-    "hintDesktop": "Rechtsklick auf einen Tag öffnet Notizen. Das Notiz-Icon zeigt vorhandene Notizen an."
+    "hintDesktop": "Rechtsklick auf einen Tag öffnet Notizen. Das Notiz-Icon zeigt vorhandene Notizen an.",
+    "created": "Notiz erfolgreich erstellt",
+    "updated": "Notiz erfolgreich aktualisiert",
+    "deleted": "Notiz erfolgreich gelöscht",
+    "createError": "Notiz konnte nicht erstellt werden",
+    "updateError": "Notiz konnte nicht aktualisiert werden",
+    "deleteError": "Notiz konnte nicht gelöscht werden"
   },
   "shift": {
     "title": "Schichten",
@@ -73,56 +76,54 @@
     "createDescription": "Füge eine neue Schicht zu deinem Kalender hinzu",
     "edit": "Schicht bearbeiten",
     "editDescription": "Aktualisiere die Schichtdetails",
-    "delete": "Schicht löschen",
     "date": "Datum",
     "startTime": "Startzeit",
     "endTime": "Endzeit",
-    "shiftTitle": "Schichttitel",
     "titlePlaceholder": "z.B. Frühschicht",
     "titleLabel": "Titel",
     "color": "Farbe",
-    "notes": "Notizen",
     "notesPlaceholder": "Zusätzliche Informationen...",
     "notesOptional": "Notizen (optional)",
     "allDay": "GT",
     "allDayShift": "Ganztägige Schicht",
-    "noShifts": "Noch keine Schichten",
-    "noShiftsDescription": "Wähle oben eine Vorlage aus und klicke auf einen beliebigen Tag im Kalender, um deine Schichten hinzuzufügen.",
-    "createPresetFirst": "Erstelle zuerst eine Vorlage, dann klicke auf einen beliebigen Tag im Kalender, um deine Schichten hinzuzufügen.",
-    "shiftsThisMonth": "Schichten diesen Monat",
+    "noShiftsInMonth": "Keine Schichten in diesem Monat",
+    "noShiftsInMonthDescription": "Füge Schichten hinzu, indem du auf Tage im Kalender oben klickst.",
     "shifts": "Schichten",
     "shift_one": "Schicht",
-    "shift_other": "{count} Schichten",
     "selectPreset": "Vorlage auswählen",
     "none": "Keine",
     "addShift": "Schicht hinzufügen",
-    "saveChanges": "Änderungen speichern"
+    "saveChanges": "Änderungen speichern",
+    "created": "Schicht erfolgreich erstellt",
+    "updated": "Schicht erfolgreich aktualisiert",
+    "deleted": "Schicht erfolgreich gelöscht",
+    "createError": "Schicht konnte nicht erstellt werden",
+    "updateError": "Schicht konnte nicht aktualisiert werden",
+    "deleteError": "Schicht konnte nicht gelöscht werden"
   },
   "preset": {
-    "title": "Vorlage",
     "create": "Neue Vorlage",
     "createNew": "Neue Vorlage erstellen",
     "createYourFirst": "Erstelle deine erste Vorlage",
     "edit": "Vorlage bearbeiten",
-    "delete": "Vorlage löschen",
     "manage": "Vorlagen verwalten",
     "manageDescription": "Bearbeite oder lösche deine Schichtvorlagen",
     "createDescription": "Erstelle eine neue Vorlage für eine schnelle Schichterstellung",
     "editDescription": "Aktualisiere Vorlagendetails",
-    "name": "Vorlagenname",
     "namePlaceholder": "z.B. Frühschicht",
     "saveAsPreset": "Als Vorlage speichern",
     "presetName": "Vorlagenname",
     "presetNamePlaceholder": "z.B. Frühschicht, Spätschicht...",
     "noPresets": "Noch keine Schichtvorlagen",
-    "createFirst": "Erstelle deine erste Schichtvorlage",
     "createFirstDescription": "Erstelle deine erste Vorlage, um Schichten schnell zu deinem Kalender hinzuzufügen. Vorlagen speichern deine häufig genutzten Schichtzeiten und Details.",
-    "select": "Vorlage auswählen",
     "deleteConfirm": "Diese Vorlage löschen? Alle aus dieser Vorlage erstellten Schichten werden ebenfalls gelöscht.",
-    "autoSaveEnabled": "Automatisches Speichern als Vorlage ist aktiviert",
-    "new": "Neu",
     "secondaryPresets": "Sekundäre Vorlagen",
-    "markAsSecondary": "Als sekundär markieren (standardmäßig eingeklappt)"
+    "markAsSecondary": "Als sekundär markieren (standardmäßig eingeklappt)",
+    "created": "Vorlage erfolgreich erstellt",
+    "updated": "Vorlage erfolgreich aktualisiert",
+    "deleted": "Vorlage erfolgreich gelöscht",
+    "saveError": "Vorlage konnte nicht gespeichert werden",
+    "deleteError": "Vorlage konnte nicht gelöscht werden"
   },
   "calendar_grid": {
     "monday": "Mo",
@@ -131,39 +132,16 @@
     "thursday": "Do",
     "friday": "Fr",
     "saturday": "Sa",
-    "sunday": "So",
-    "mondayFull": "Montag",
-    "tuesdayFull": "Dienstag",
-    "wednesdayFull": "Mittwoch",
-    "thursdayFull": "Donnerstag",
-    "fridayFull": "Freitag",
-    "saturdayFull": "Samstag",
-    "sundayFull": "Sonntag"
+    "sunday": "So"
   },
-  "language": {
-    "title": "Sprache",
-    "german": "Deutsch",
-    "english": "English",
-    "select": "Sprache wählen"
-  },
-  "colors": {
-    "blue": "Blau",
-    "red": "Rot",
-    "green": "Grün",
-    "amber": "Bernstein",
-    "violet": "Violett",
-    "pink": "Pink",
-    "cyan": "Cyan",
-    "orange": "Orange"
-  },
+
   "stats": {
     "title": "Schichtenstatistik",
     "week": "Woche",
     "month": "Monat",
     "year": "Jahr",
     "total": "Gesamt",
-    "noData": "Keine Schichten in diesem Zeitraum",
-    "shiftsTotal": "Schichten"
+    "noData": "Keine Schichten in diesem Zeitraum"
   },
   "onboarding": {
     "welcome": "Willkommen bei BetterShift",

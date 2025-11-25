@@ -17,6 +17,8 @@ import { Label } from "@/components/ui/label";
 import { Trash2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ColorPicker } from "@/components/ui/color-picker";
+import { motion } from "motion/react";
+import { toast } from "sonner";
 
 interface PresetSelectorProps {
   presets: ShiftPreset[];
@@ -165,6 +167,7 @@ export function PresetSelector({
             password,
           }),
         });
+        toast.success(t("preset.created"));
       } else if (editingPreset) {
         // Update existing preset
         await fetch(`/api/presets/${editingPreset.id}`, {
@@ -172,6 +175,7 @@ export function PresetSelector({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...formData, password }),
         });
+        toast.success(t("preset.updated"));
 
         // Refresh shifts as they may have been updated
         if (onShiftsChange) onShiftsChange();
@@ -182,6 +186,7 @@ export function PresetSelector({
       resetForm();
     } catch (error) {
       console.error("Failed to save preset:", error);
+      toast.error(t("preset.saveError"));
     }
   };
 
@@ -224,8 +229,10 @@ export function PresetSelector({
         onPresetsChange();
         // Refresh shifts as they may have been deleted
         if (onShiftsChange) onShiftsChange();
+        toast.success(t("preset.deleted"));
       } catch (error) {
         console.error("Failed to delete preset:", error);
+        toast.error(t("preset.deleteError"));
       }
     };
 
@@ -253,49 +260,60 @@ export function PresetSelector({
           </Button>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {/* Primary Presets */}
           <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
             {presets
               .filter((p) => !p.isSecondary)
               .map((preset) => (
-                <Button
+                <motion.div
                   key={preset.id}
-                  variant={
-                    selectedPresetId === preset.id ? "default" : "outline"
-                  }
-                  size="sm"
-                  onClick={() =>
-                    onSelectPreset(
-                      selectedPresetId === preset.id ? undefined : preset.id
-                    )
-                  }
-                  className="relative text-xs sm:text-sm px-2 sm:px-3 h-8 sm:h-9"
-                  style={{
-                    backgroundColor:
-                      selectedPresetId === preset.id ? preset.color : undefined,
-                    borderColor: preset.color,
-                  }}
+                  whileTap={{ scale: 0.95 }}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
                 >
-                  {selectedPresetId === preset.id && (
-                    <Check className="mr-1 h-3 w-3" />
-                  )}
-                  <span className="font-medium truncate max-w-[80px] sm:max-w-none">
-                    {preset.title}
-                  </span>
-                  <span className="ml-1 text-[10px] sm:text-xs opacity-70">
-                    {preset.isAllDay ? (
-                      <span>{t("shift.allDay")}</span>
-                    ) : (
-                      <>
-                        <span className="sm:hidden">{preset.startTime}</span>
-                        <span className="hidden sm:inline">
-                          {preset.startTime} - {preset.endTime}
-                        </span>
-                      </>
+                  <Button
+                    variant={
+                      selectedPresetId === preset.id ? "default" : "outline"
+                    }
+                    size="sm"
+                    onClick={() =>
+                      onSelectPreset(
+                        selectedPresetId === preset.id ? undefined : preset.id
+                      )
+                    }
+                    className="relative text-[11px] sm:text-sm px-2 sm:px-4 h-8 sm:h-10 rounded-full font-semibold transition-all"
+                    style={{
+                      backgroundColor:
+                        selectedPresetId === preset.id
+                          ? preset.color
+                          : undefined,
+                      borderColor: preset.color,
+                      borderWidth: "2px",
+                    }}
+                  >
+                    {selectedPresetId === preset.id && (
+                      <Check className="mr-1 sm:mr-1.5 h-3 sm:h-3.5 w-3 sm:w-3.5" />
                     )}
-                  </span>
-                </Button>
+                    <span className="truncate max-w-[80px] sm:max-w-none">
+                      {preset.title}
+                    </span>
+                    <span className="ml-1 sm:ml-1.5 text-[9px] sm:text-xs opacity-80">
+                      {preset.isAllDay ? (
+                        <span>{t("shift.allDay")}</span>
+                      ) : (
+                        <>
+                          <span className="sm:hidden">
+                            {preset.startTime.substring(0, 5)}
+                          </span>
+                          <span className="hidden sm:inline">
+                            {preset.startTime} - {preset.endTime}
+                          </span>
+                        </>
+                      )}
+                    </span>
+                  </Button>
+                </motion.div>
               ))}
             <Button
               variant="outline"
@@ -395,20 +413,22 @@ export function PresetSelector({
 
       {/* Manage Presets Dialog */}
       <Dialog open={showManageDialog} onOpenChange={setShowManageDialog}>
-        <DialogContent className="sm:max-w-[500px] max-h-[85vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle>{t("preset.manage")}</DialogTitle>
-            <DialogDescription>
+        <DialogContent className="sm:max-w-[520px] max-h-[85vh] flex flex-col p-0 gap-0 border border-border/50 bg-gradient-to-b from-background via-background to-muted/30 backdrop-blur-xl shadow-2xl">
+          <DialogHeader className="border-b border-border/50 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-6 pb-5 space-y-1.5">
+            <DialogTitle className="text-xl font-semibold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">
+              {t("preset.manage")}
+            </DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground">
               {t("preset.manageDescription", {
                 default: "Edit or delete your shift presets",
               })}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 overflow-y-auto flex-1 pr-2">
+          <div className="space-y-3 overflow-y-auto flex-1 p-6">
             <Button
               onClick={handleCreateNew}
-              className="w-full"
-              variant="outline"
+              className="w-full h-11 bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary/80 shadow-lg shadow-primary/25"
+              variant="default"
             >
               <Plus className="mr-2 h-4 w-4" />
               {t("preset.createNew")}
@@ -416,12 +436,18 @@ export function PresetSelector({
             {presets.map((preset) => (
               <div
                 key={preset.id}
-                className="flex items-center justify-between p-3 rounded-lg border"
+                className="flex items-center justify-between p-4 rounded-xl border border-border/50 bg-muted/20 hover:bg-muted/30 transition-all"
                 style={{ borderLeftColor: preset.color, borderLeftWidth: 4 }}
               >
                 <div className="flex-1">
-                  <div className="font-medium">{preset.title}</div>
-                  <div className="text-sm text-muted-foreground">
+                  <div className="font-semibold flex items-center gap-2">
+                    <div
+                      className="w-1 h-4 rounded-full"
+                      style={{ backgroundColor: preset.color }}
+                    ></div>
+                    {preset.title}
+                  </div>
+                  <div className="text-sm text-muted-foreground mt-1">
                     {preset.isAllDay ? (
                       <span>{t("shift.allDay")}</span>
                     ) : (
@@ -436,6 +462,7 @@ export function PresetSelector({
                     variant="outline"
                     size="sm"
                     onClick={() => handleEditPreset(preset)}
+                    className="h-9"
                   >
                     {t("common.edit")}
                   </Button>
@@ -443,6 +470,7 @@ export function PresetSelector({
                     variant="ghost"
                     size="sm"
                     onClick={() => handleDeletePreset(preset.id)}
+                    className="h-9 w-9 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -464,12 +492,12 @@ export function PresetSelector({
           }
         }}
       >
-        <DialogContent className="max-h-[90vh] overflow-y-auto overflow-x-hidden w-[95vw] max-w-[500px] p-4 sm:p-6">
-          <DialogHeader>
-            <DialogTitle className="text-base sm:text-lg">
+        <DialogContent className="max-h-[90vh] overflow-y-auto overflow-x-hidden w-[95vw] max-w-[520px] p-0 gap-0 border border-border/50 bg-gradient-to-b from-background via-background to-muted/30 backdrop-blur-xl shadow-2xl">
+          <DialogHeader className="border-b border-border/50 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-6 pb-5 space-y-1.5">
+            <DialogTitle className="text-xl font-semibold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">
               {isCreatingNew ? t("preset.createNew") : t("preset.edit")}
             </DialogTitle>
-            <DialogDescription className="text-sm">
+            <DialogDescription className="text-sm text-muted-foreground">
               {isCreatingNew
                 ? t("preset.createDescription", {
                     default: "Create a new preset for quick shift creation",
@@ -479,9 +507,13 @@ export function PresetSelector({
                   })}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 pb-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="preset-title" className="text-sm">
+          <div className="space-y-5 p-6">
+            <div className="space-y-2.5">
+              <Label
+                htmlFor="preset-title"
+                className="text-sm font-medium flex items-center gap-2"
+              >
+                <div className="w-1 h-4 bg-gradient-to-b from-primary to-primary/50 rounded-full"></div>
                 {t("shift.titleLabel")}
               </Label>
               <Input
@@ -491,10 +523,10 @@ export function PresetSelector({
                 onChange={(e) =>
                   setFormData({ ...formData, title: e.target.value })
                 }
-                className="text-base"
+                className="h-11 border-border/50 focus:border-primary/50 focus:ring-primary/20 bg-background/50"
               />
             </div>
-            <div className="flex items-center space-x-2 py-1">
+            <div className="flex items-center space-x-2 p-3 bg-muted/30 rounded-lg border border-border/30">
               <Checkbox
                 id="preset-allday"
                 checked={formData.isAllDay}
@@ -509,46 +541,56 @@ export function PresetSelector({
                 {t("shift.allDayShift")}
               </Label>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="preset-start" className="text-sm">
-                  {t("shift.startTime")}
-                </Label>
-                <Input
-                  id="preset-start"
-                  type="time"
-                  value={formData.startTime}
-                  onChange={(e) =>
-                    setFormData({ ...formData, startTime: e.target.value })
-                  }
-                  disabled={formData.isAllDay}
-                  className="text-base"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="preset-end" className="text-sm">
-                  {t("shift.endTime")}
-                </Label>
-                <Input
-                  id="preset-end"
-                  type="time"
-                  value={formData.endTime}
-                  onChange={(e) =>
-                    setFormData({ ...formData, endTime: e.target.value })
-                  }
-                  disabled={formData.isAllDay}
-                  className="text-base"
-                />
-              </div>
-            </div>
+            {!formData.isAllDay && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.2 }}
+                className="grid grid-cols-2 gap-3"
+              >
+                <div className="space-y-2">
+                  <Label htmlFor="preset-start" className="text-sm font-medium">
+                    {t("shift.startTime")}
+                  </Label>
+                  <Input
+                    id="preset-start"
+                    type="time"
+                    value={formData.startTime}
+                    onChange={(e) =>
+                      setFormData({ ...formData, startTime: e.target.value })
+                    }
+                    className="h-11 border-border/50 focus:border-primary/50 focus:ring-primary/20 bg-background/50"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="preset-end" className="text-sm font-medium">
+                    {t("shift.endTime")}
+                  </Label>
+                  <Input
+                    id="preset-end"
+                    type="time"
+                    value={formData.endTime}
+                    onChange={(e) =>
+                      setFormData({ ...formData, endTime: e.target.value })
+                    }
+                    className="h-11 border-border/50 focus:border-primary/50 focus:ring-primary/20 bg-background/50"
+                  />
+                </div>
+              </motion.div>
+            )}
             <ColorPicker
               color={formData.color}
               onChange={(color) => setFormData({ ...formData, color })}
               label={t("shift.color")}
               presetColors={PRESET_COLORS}
             />
-            <div className="space-y-1.5">
-              <Label htmlFor="preset-notes" className="text-sm">
+            <div className="space-y-2.5">
+              <Label
+                htmlFor="preset-notes"
+                className="text-sm font-medium flex items-center gap-2"
+              >
+                <div className="w-1 h-4 bg-gradient-to-b from-primary to-primary/50 rounded-full"></div>
                 {t("shift.notesOptional")}
               </Label>
               <Input
@@ -558,10 +600,10 @@ export function PresetSelector({
                 onChange={(e) =>
                   setFormData({ ...formData, notes: e.target.value })
                 }
-                className="text-base"
+                className="h-11 border-border/50 focus:border-primary/50 focus:ring-primary/20 bg-background/50"
               />
             </div>
-            <div className="flex items-center space-x-2 py-1">
+            <div className="flex items-center space-x-2 p-3 bg-muted/30 rounded-lg border border-border/30">
               <Checkbox
                 id="preset-secondary"
                 checked={formData.isSecondary}
@@ -571,12 +613,12 @@ export function PresetSelector({
               />
               <Label
                 htmlFor="preset-secondary"
-                className="text-sm font-normal cursor-pointer"
+                className="text-sm font-medium cursor-pointer"
               >
                 {t("preset.markAsSecondary")}
               </Label>
             </div>
-            <div className="flex gap-2 pt-2">
+            <div className="flex gap-2.5 pt-2">
               <Button
                 type="button"
                 variant="outline"
@@ -585,7 +627,7 @@ export function PresetSelector({
                   setIsCreatingNew(false);
                   resetForm();
                 }}
-                className="flex-1"
+                className="flex-1 h-11 border-border/50 hover:bg-muted/50"
               >
                 {t("common.cancel")}
               </Button>
@@ -593,7 +635,7 @@ export function PresetSelector({
                 type="button"
                 onClick={handleSave}
                 disabled={!formData.title.trim()}
-                className="flex-1"
+                className="flex-1 h-11 bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary/80 shadow-lg shadow-primary/25 disabled:opacity-50 disabled:shadow-none"
               >
                 {isCreatingNew ? t("common.create") : t("common.save")}
               </Button>

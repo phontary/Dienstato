@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
+import { motion } from "motion/react";
 import {
   Dialog,
   DialogContent,
@@ -114,21 +115,28 @@ export function ManagePasswordDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
-        <DialogHeader>
-          <DialogTitle>
+      <DialogContent className="sm:max-w-[480px] p-0 gap-0 border border-border/50 bg-gradient-to-b from-background via-background to-muted/30 backdrop-blur-xl shadow-2xl">
+        <DialogHeader className="border-b border-border/50 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-6 pb-5 space-y-1.5">
+          <DialogTitle className="text-xl font-semibold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">
             {t("password.manage", { name: calendarName })}
           </DialogTitle>
-          <DialogDescription>
-            {hasPassword
-              ? t("password.currentlyProtected")
-              : t("password.notProtected")}
+          <DialogDescription asChild>
+            <div className="text-sm text-muted-foreground flex items-center gap-2">
+              <div className="w-1 h-4 bg-gradient-to-b from-primary to-primary/50 rounded-full"></div>
+              {hasPassword
+                ? t("password.currentlyProtected")
+                : t("password.notProtected")}
+            </div>
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-5">
           {hasPassword && (
-            <div className="space-y-2">
-              <Label htmlFor="currentPassword">
+            <div className="space-y-2.5">
+              <Label
+                htmlFor="currentPassword"
+                className="text-sm font-medium flex items-center gap-2"
+              >
+                <div className="w-1 h-4 bg-gradient-to-b from-primary to-primary/50 rounded-full"></div>
                 {t("password.currentPassword")}
               </Label>
               <Input
@@ -137,13 +145,14 @@ export function ManagePasswordDialog({
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
                 placeholder={t("password.currentPasswordPlaceholder")}
+                className="h-11 border-primary/30 focus:border-primary/50 focus:ring-primary/20 bg-background/50"
                 autoFocus
               />
             </div>
           )}
 
           {hasPassword && (
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 p-3 bg-muted/30 rounded-lg border border-border/30">
               <Checkbox
                 id="removePassword"
                 checked={removePassword}
@@ -151,7 +160,7 @@ export function ManagePasswordDialog({
               />
               <Label
                 htmlFor="removePassword"
-                className="text-sm font-normal cursor-pointer"
+                className="text-sm font-medium cursor-pointer"
               >
                 {t("password.removePassword")}
               </Label>
@@ -159,9 +168,19 @@ export function ManagePasswordDialog({
           )}
 
           {!removePassword && (
-            <>
-              <div className="space-y-2">
-                <Label htmlFor="newPassword">
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.2 }}
+              className="space-y-4"
+            >
+              <div className="space-y-2.5">
+                <Label
+                  htmlFor="newPassword"
+                  className="text-sm font-medium flex items-center gap-2"
+                >
+                  <div className="w-1 h-4 bg-gradient-to-b from-primary to-primary/50 rounded-full"></div>
                   {hasPassword
                     ? t("password.newPassword")
                     : t("password.password")}
@@ -172,12 +191,17 @@ export function ManagePasswordDialog({
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder={t("password.newPasswordPlaceholder")}
+                  className="h-11 border-primary/30 focus:border-primary/50 focus:ring-primary/20 bg-background/50"
                   autoFocus={!hasPassword}
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="confirmPassword">
+              <div className="space-y-2.5">
+                <Label
+                  htmlFor="confirmPassword"
+                  className="text-sm font-medium flex items-center gap-2"
+                >
+                  <div className="w-1 h-4 bg-gradient-to-b from-primary to-primary/50 rounded-full"></div>
                   {t("password.confirmPassword")}
                 </Label>
                 <Input
@@ -186,22 +210,32 @@ export function ManagePasswordDialog({
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder={t("password.confirmPasswordPlaceholder")}
+                  className="h-11 border-primary/30 focus:border-primary/50 focus:ring-primary/20 bg-background/50"
                 />
               </div>
-            </>
+            </motion.div>
           )}
 
-          {error && <p className="text-sm text-red-500">{error}</p>}
+          {error && (
+            <p className="text-sm text-red-500 flex items-center gap-1.5 bg-red-500/10 p-3 rounded-lg border border-red-500/20">
+              {error}
+            </p>
+          )}
 
-          <div className="flex justify-end gap-2">
+          <div className="flex gap-2.5 pt-2">
             <Button
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
+              className="flex-1 h-11 border-border/50 hover:bg-muted/50"
             >
               {t("common.cancel")}
             </Button>
-            <Button type="submit" disabled={loading}>
+            <Button
+              type="submit"
+              disabled={loading}
+              className="flex-1 h-11 bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary/80 shadow-lg shadow-primary/25 disabled:opacity-50 disabled:shadow-none"
+            >
               {loading ? t("common.loading") : t("common.save")}
             </Button>
           </div>

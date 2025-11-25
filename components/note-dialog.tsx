@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
+import { motion } from "motion/react";
+import { StickyNote } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -68,44 +70,67 @@ export function NoteDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{note ? t("note.edit") : t("note.create")}</DialogTitle>
-          <DialogDescription>{formattedDate}</DialogDescription>
+      <DialogContent className="sm:max-w-[480px] p-0 gap-0 border border-border/50 bg-gradient-to-b from-background via-background to-muted/30 backdrop-blur-xl shadow-2xl">
+        <DialogHeader className="border-b border-border/50 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-6 pb-5 space-y-1.5">
+          <DialogTitle className="text-xl font-semibold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text flex items-center gap-2">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center shadow-lg shadow-primary/30">
+              <StickyNote className="h-5 w-5 text-white" />
+            </div>
+            {note ? t("note.edit") : t("note.create")}
+          </DialogTitle>
+          <DialogDescription asChild>
+            <div className="text-sm text-muted-foreground flex items-center gap-2 pl-11">
+              <div className="w-1 h-4 bg-gradient-to-b from-primary to-primary/50 rounded-full"></div>
+              {formattedDate}
+            </div>
+          </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="note">{t("note.note")}</Label>
+        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+          <div className="space-y-2.5">
+            <Label
+              htmlFor="note"
+              className="text-sm font-medium flex items-center gap-2"
+            >
+              <div className="w-1 h-4 bg-gradient-to-b from-primary to-primary/50 rounded-full"></div>
+              {t("note.note")}
+            </Label>
             <Textarea
               id="note"
               value={noteText}
               onChange={(e) => setNoteText(e.target.value)}
               placeholder={t("note.notePlaceholder")}
-              className="min-h-[100px]"
+              className="min-h-[120px] border-primary/30 focus:border-primary/50 focus:ring-primary/20 bg-primary/5 backdrop-blur-sm resize-none"
               required
             />
           </div>
-          <div className="flex justify-between">
+          <div className="flex justify-between items-center pt-2">
             <div>
               {note && onDelete && (
                 <Button
                   type="button"
                   variant="destructive"
                   onClick={handleDelete}
+                  className="h-11 shadow-lg hover:shadow-xl transition-all"
                 >
                   {t("common.delete")}
                 </Button>
               )}
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2.5">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => onOpenChange(false)}
+                className="h-11 border-border/50 hover:bg-muted/50"
               >
                 {t("common.cancel")}
               </Button>
-              <Button type="submit">{t("common.save")}</Button>
+              <Button
+                type="submit"
+                className="h-11 bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary/80 shadow-lg shadow-primary/25"
+              >
+                {t("common.save")}
+              </Button>
             </div>
           </div>
         </form>

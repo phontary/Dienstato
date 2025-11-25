@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { HexColorPicker } from "react-colorful";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -27,10 +28,16 @@ export function ColorPicker({
   presetColors = [],
 }: ColorPickerProps) {
   const [open, setOpen] = useState(false);
+  const t = useTranslations();
 
   return (
-    <div className="space-y-2">
-      {label && <Label>{label}</Label>}
+    <div className="space-y-2.5">
+      {label && (
+        <Label className="text-sm font-medium flex items-center gap-2">
+          <div className="w-1 h-4 bg-gradient-to-b from-primary to-primary/50 rounded-full"></div>
+          {label}
+        </Label>
+      )}
       <div className="flex flex-wrap gap-2">
         {/* Preset Colors */}
         {presetColors.map((preset) => (
@@ -38,12 +45,18 @@ export function ColorPicker({
             key={preset.value}
             type="button"
             onClick={() => onChange(preset.value)}
-            className={`w-8 h-8 rounded-md border-2 transition-all ${
+            className={`w-10 h-10 rounded-lg border-2 transition-all ${
               color === preset.value
-                ? "border-foreground scale-110"
-                : "border-muted-foreground/20 hover:border-muted-foreground/50"
+                ? "border-primary scale-110 shadow-lg"
+                : "border-border/30 hover:border-border/60 hover:scale-105"
             }`}
-            style={{ backgroundColor: preset.value }}
+            style={{
+              backgroundColor: preset.value,
+              boxShadow:
+                color === preset.value
+                  ? `0 4px 12px ${preset.value}40`
+                  : "none",
+            }}
             title={preset.name}
           />
         ))}
@@ -54,40 +67,53 @@ export function ColorPicker({
             <Button
               type="button"
               variant="outline"
-              className="h-8 px-3 gap-2 border-2 border-dashed relative"
-              title="Custom color"
+              className="h-10 px-3 gap-2 border-2 border-dashed border-border/50 hover:border-primary/50 relative transition-all"
+              title={t("color.custom", { default: "Custom color" })}
             >
               <div
                 className="w-5 h-5 rounded border-2 border-foreground/20"
                 style={{ backgroundColor: color }}
               />
-              <span className="text-xs font-medium">Custom</span>
+              <span className="text-xs font-medium">
+                {t("color.custom", { default: "Custom" })}
+              </span>
               {!presetColors.some((p) => p.value === color) && (
                 <div className="absolute -top-1 -right-1 w-3 h-3 bg-primary rounded-full border-2 border-background" />
               )}
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Custom Color</DialogTitle>
-              <DialogDescription>
-                Choose a custom color using the color picker
+          <DialogContent className="sm:max-w-md p-0 gap-0 border border-border/50 bg-gradient-to-b from-background via-background to-muted/30 backdrop-blur-xl shadow-2xl">
+            <DialogHeader className="border-b border-border/50 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-6 pb-5 space-y-1.5">
+              <DialogTitle className="text-xl font-semibold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">
+                {t("color.customTitle", { default: "Custom Color" })}
+              </DialogTitle>
+              <DialogDescription className="text-sm text-muted-foreground">
+                {t("color.customDescription", {
+                  default: "Choose a custom color using the color picker",
+                })}
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4">
-              <HexColorPicker color={color} onChange={onChange} />
-              <div className="flex items-center gap-2">
+            <div className="space-y-4 p-6">
+              <div className="rounded-xl overflow-hidden border border-border/50 shadow-lg">
+                <HexColorPicker
+                  color={color}
+                  onChange={onChange}
+                  className="w-full"
+                />
+              </div>
+              <div className="flex items-center gap-2.5">
                 <input
                   type="text"
                   value={color}
                   onChange={(e) => onChange(e.target.value)}
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+                  className="flex h-11 w-full rounded-lg border border-border/50 bg-background/50 px-3 py-1 text-base shadow-sm transition-all focus:border-primary/50 focus:ring-2 focus:ring-primary/20 focus:outline-none"
                   placeholder="#000000"
                 />
                 <Button
                   type="button"
                   onClick={() => setOpen(false)}
                   variant="default"
+                  className="h-11 px-6 bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary/80 shadow-lg shadow-primary/25"
                 >
                   OK
                 </Button>

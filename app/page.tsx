@@ -27,6 +27,8 @@ import {
   Plus,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
   Calendar as CalendarIcon,
   StickyNote,
 } from "lucide-react";
@@ -45,6 +47,8 @@ import {
 import { de, enUS } from "date-fns/locale";
 import { ShiftPreset, CalendarNote } from "@/lib/db/schema";
 import { formatDateToLocal } from "@/lib/date-utils";
+import { toast } from "sonner";
+import { motion, AnimatePresence } from "motion/react";
 
 function HomeContent() {
   const router = useRouter();
@@ -87,6 +91,7 @@ function HomeContent() {
   const [loading, setLoading] = useState(true);
   const [statsRefreshTrigger, setStatsRefreshTrigger] = useState(0);
   const [isTogglingShift, setIsTogglingShift] = useState(false);
+  const [showShiftsSection, setShowShiftsSection] = useState(false);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Fetch calendars on mount and setup cleanup
@@ -218,8 +223,10 @@ function HomeContent() {
       const newCalendar = await response.json();
       setCalendars([...calendars, newCalendar]);
       setSelectedCalendar(newCalendar.id);
+      toast.success(t("calendar.created"));
     } catch (error) {
       console.error("Failed to create calendar:", error);
+      toast.error(t("calendar.createError"));
     }
   };
 
@@ -241,7 +248,7 @@ function HomeContent() {
       const response = await fetch(url, { method: "DELETE" });
 
       if (response.status === 401) {
-        alert(t("password.errorIncorrect"));
+        toast.error(t("password.errorIncorrect"));
         return;
       }
 
@@ -261,9 +268,11 @@ function HomeContent() {
 
         setShowDeleteCalendarDialog(false);
         setCalendarToDelete(undefined);
+        toast.success(t("calendar.deleted"));
       }
     } catch (error) {
       console.error("Failed to delete calendar:", error);
+      toast.error(t("calendar.deleteError"));
     }
   };
 
@@ -303,11 +312,13 @@ function HomeContent() {
       setShifts((shifts) =>
         shifts.map((s) => (s.id === tempId ? newShift : s))
       );
+      toast.success(t("shift.created"));
     } catch (error) {
       console.error("Failed to create shift:", error);
       // Rollback optimistic update on error
       setShifts((shifts) => shifts.filter((s) => s.id !== tempId));
       setStatsRefreshTrigger((prev) => prev + 1);
+      toast.error(t("shift.createError"));
     }
   };
 
@@ -334,8 +345,10 @@ function HomeContent() {
       const updatedShift = await response.json();
       setShifts(shifts.map((s) => (s.id === id ? updatedShift : s)));
       setStatsRefreshTrigger((prev) => prev + 1);
+      toast.success(t("shift.updated"));
     } catch (error) {
       console.error("Failed to update shift:", error);
+      toast.error(t("shift.updateError"));
     }
   };
 
@@ -361,8 +374,10 @@ function HomeContent() {
 
       setShifts(shifts.filter((s) => s.id !== id));
       setStatsRefreshTrigger((prev) => prev + 1);
+      toast.success(t("shift.deleted"));
     } catch (error) {
       console.error("Failed to delete shift:", error);
+      toast.error(t("shift.deleteError"));
     }
   };
 
@@ -431,8 +446,10 @@ function HomeContent() {
       });
       const newNote = await response.json();
       setNotes([...notes, newNote]);
+      toast.success(t("note.created"));
     } catch (error) {
       console.error("Failed to create note:", error);
+      toast.error(t("note.createError"));
     }
   };
 
@@ -445,8 +462,10 @@ function HomeContent() {
       });
       const updatedNote = await response.json();
       setNotes(notes.map((n) => (n.id === noteId ? updatedNote : n)));
+      toast.success(t("note.updated"));
     } catch (error) {
       console.error("Failed to update note:", error);
+      toast.error(t("note.updateError"));
     }
   };
 
@@ -454,8 +473,10 @@ function HomeContent() {
     try {
       await fetch(`/api/notes/${noteId}`, { method: "DELETE" });
       setNotes(notes.filter((n) => n.id !== noteId));
+      toast.success(t("note.deleted"));
     } catch (error) {
       console.error("Failed to delete note:", error);
+      toast.error(t("note.deleteError"));
     }
   };
 
@@ -511,6 +532,46 @@ function HomeContent() {
 
   const handleShiftSubmit = (formData: ShiftFormData) => {
     createShift(formData);
+  };
+
+  const handleManualShiftCreation = async () => {
+    if (!selectedCalendar) return;
+
+    try {
+      const password = localStorage.getItem(
+        `calendar_password_${selectedCalendar}`
+      );
+
+      // Verify password if calendar is protected
+      const response = await fetch(
+        `/api/calendars/${selectedCalendar}/verify-password`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (data.protected && !data.valid) {
+        // Password required or invalid
+        localStorage.removeItem(`calendar_password_${selectedCalendar}`);
+        setPendingAction({
+          type: "edit",
+          presetAction: handleManualShiftCreation,
+        });
+        setShowPasswordDialog(true);
+        return;
+      }
+
+      // Password valid or not required, open shift dialog
+      setSelectedDate(new Date());
+      setShowShiftDialog(true);
+    } catch (error) {
+      console.error("Failed to verify password:", error);
+      toast.error(t("password.errorVerification"));
+    }
   };
 
   const handleAddShift = async (date: Date) => {
@@ -590,12 +651,16 @@ function HomeContent() {
               // Rollback on error
               setShifts(shifts);
               setStatsRefreshTrigger((prev) => prev + 1);
+              toast.error(t("shift.deleteError"));
+            } else {
+              toast.success(t("shift.deleted"));
             }
           } catch (error) {
             console.error("Failed to delete shift:", error);
             // Rollback on error
             setShifts(shifts);
             setStatsRefreshTrigger((prev) => prev + 1);
+            toast.error(t("shift.deleteError"));
           }
         } else {
           // Toggle: add the shift
@@ -637,8 +702,28 @@ function HomeContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-muted-foreground">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-background to-muted/20">
+        <motion.div
+          className="text-center space-y-4"
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+        >
+          <motion.div
+            animate={{
+              rotate: 360,
+            }}
+            transition={{
+              duration: 2,
+              repeat: Infinity,
+              ease: "linear",
+            }}
+          >
+            <CalendarIcon className="h-12 w-12 sm:h-16 sm:w-16 mx-auto text-primary" />
+          </motion.div>
+          <p className="text-sm sm:text-base text-muted-foreground font-medium">
+            {t("common.loading")}
+          </p>
+        </motion.div>
       </div>
     );
   }
@@ -647,17 +732,38 @@ function HomeContent() {
     return (
       <div className="min-h-screen flex flex-col">
         <div className="flex-1 flex items-center justify-center p-4">
-          <div className="text-center space-y-4 max-w-md">
-            <CalendarIcon className="h-16 w-16 mx-auto text-muted-foreground" />
-            <h1 className="text-2xl font-bold">{t("onboarding.welcome")}</h1>
-            <p className="text-muted-foreground">
-              {t("onboarding.description")}
-            </p>
-            <Button onClick={() => setShowCalendarDialog(true)} size="lg">
-              <Plus className="mr-2 h-4 w-4" />
-              {t("onboarding.createCalendar")}
-            </Button>
-          </div>
+          <motion.div
+            className="text-center space-y-6 max-w-md"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.1, type: "spring", stiffness: 200 }}
+              className="w-20 h-20 mx-auto rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center"
+            >
+              <CalendarIcon className="h-10 w-10 text-primary" />
+            </motion.div>
+            <div className="space-y-3">
+              <h1 className="text-2xl sm:text-3xl font-bold">
+                {t("onboarding.welcome")}
+              </h1>
+              <p className="text-muted-foreground text-sm sm:text-base leading-relaxed">
+                {t("onboarding.description")}
+              </p>
+            </div>
+            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+              <Button
+                onClick={() => setShowCalendarDialog(true)}
+                size="lg"
+                className="h-12 px-8 text-base font-semibold shadow-lg shadow-primary/20"
+              >
+                <Plus className="mr-2 h-5 w-5" />
+                {t("onboarding.createCalendar")}
+              </Button>
+            </motion.div>
+          </motion.div>
         </div>
         <div className="border-t bg-background">
           <div className="container max-w-4xl mx-auto p-3 sm:p-4 flex justify-center">
@@ -676,32 +782,55 @@ function HomeContent() {
   return (
     <div className="min-h-screen flex flex-col">
       {/* Header - Desktop: Horizontal, Mobile: Compact with Dialog */}
-      <div className="sticky top-0 z-10 bg-gradient-to-b from-background via-background to-background/95 border-b shadow-sm">
+      <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl border-b border-border/50 shadow-sm">
         <div className="container max-w-4xl mx-auto p-3 sm:p-4">
           <div className="space-y-3 sm:space-y-4">
             {/* Desktop: Logo + Calendar Selector in one line */}
             <div className="hidden sm:flex items-center justify-between gap-4">
               {/* Logo Section */}
-              <div className="flex items-center gap-3">
+              <motion.div
+                className="flex items-center gap-3"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.3 }}
+              >
                 <div className="relative shrink-0">
-                  <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-primary via-primary/90 to-primary/70 flex items-center justify-center shadow-lg shadow-primary/20 ring-2 ring-primary/10">
-                    <CalendarIcon className="h-5 w-5 text-primary-foreground" />
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary via-primary/90 to-primary/70 flex items-center justify-center shadow-xl shadow-primary/30 ring-2 ring-primary/20">
+                    <CalendarIcon className="h-6 w-6 text-primary-foreground" />
                   </div>
-                  <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-background"></div>
+                  <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-green-500 rounded-full border-2 border-background animate-pulse"></div>
                 </div>
                 <div>
-                  <h1 className="text-xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+                  <h1 className="text-xl font-bold bg-gradient-to-r from-foreground via-foreground to-foreground/70 bg-clip-text">
                     {t("app.title")}
                   </h1>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-muted-foreground font-medium">
                     {t("app.subtitle", { default: "Organize your shifts" })}
                   </p>
                 </div>
-              </div>
+              </motion.div>
 
               {/* Calendar Selector - Desktop */}
-              <div className="flex items-center gap-2 min-w-0 flex-1 max-w-md">
-                <div className="w-1 h-8 bg-primary rounded-full"></div>
+              <motion.div
+                className="flex items-center gap-3 min-w-0 flex-1 max-w-md bg-muted/30 rounded-xl p-2 border border-border/50"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.3, delay: 0.1 }}
+              >
+                <div
+                  className="w-1 h-8 bg-gradient-to-b rounded-full transition-colors duration-300"
+                  style={{
+                    backgroundImage: selectedCalendar
+                      ? `linear-gradient(to bottom, ${
+                          calendars.find((c) => c.id === selectedCalendar)
+                            ?.color || "hsl(var(--primary))"
+                        }, ${
+                          calendars.find((c) => c.id === selectedCalendar)
+                            ?.color || "hsl(var(--primary))"
+                        }80)`
+                      : "linear-gradient(to bottom, hsl(var(--primary)), hsl(var(--primary) / 0.5))",
+                  }}
+                ></div>
                 <div className="flex-1 min-w-0">
                   <CalendarSelector
                     calendars={calendars}
@@ -712,26 +841,39 @@ function HomeContent() {
                     onDelete={initiateDeleteCalendar}
                   />
                 </div>
-              </div>
+              </motion.div>
             </div>
 
             {/* Mobile: Logo Icon + Calendar Card */}
             <div className="sm:hidden flex items-center gap-2">
               {/* Logo Icon Only */}
               <div className="relative shrink-0">
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary via-primary/90 to-primary/70 flex items-center justify-center shadow-lg shadow-primary/20 ring-2 ring-primary/10">
-                  <CalendarIcon className="h-4.5 w-4.5 text-primary-foreground" />
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary via-primary/90 to-primary/70 flex items-center justify-center shadow-lg shadow-primary/30 ring-2 ring-primary/20">
+                  <CalendarIcon className="h-5 w-5 text-primary-foreground" />
                 </div>
-                <div className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-background"></div>
+                <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-background"></div>
               </div>
 
               {/* Calendar Selection Card */}
               <button
                 onClick={() => setShowMobileCalendarDialog(true)}
-                className="flex-1 bg-card/50 backdrop-blur-sm border rounded-lg p-2.5 flex items-center justify-between gap-2 hover:bg-accent/50 transition-colors active:scale-[0.98]"
+                className="flex-1 bg-muted/30 backdrop-blur-sm border border-border/50 rounded-xl p-3 flex items-center justify-between gap-2 hover:bg-accent/50 transition-all active:scale-[0.98] shadow-sm"
               >
-                <div className="flex items-center gap-2 min-w-0 flex-1">
-                  <div className="w-1 h-8 bg-primary rounded-full"></div>
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                  <div
+                    className="w-1 h-9 bg-gradient-to-b rounded-full transition-colors duration-300"
+                    style={{
+                      backgroundImage: selectedCalendar
+                        ? `linear-gradient(to bottom, ${
+                            calendars.find((c) => c.id === selectedCalendar)
+                              ?.color || "hsl(var(--primary))"
+                          }, ${
+                            calendars.find((c) => c.id === selectedCalendar)
+                              ?.color || "hsl(var(--primary))"
+                          }80)`
+                        : "linear-gradient(to bottom, hsl(var(--primary)), hsl(var(--primary) / 0.5))",
+                    }}
+                  ></div>
                   <div className="min-w-0 flex-1 text-left">
                     <p className="text-[10px] text-muted-foreground font-medium">
                       {t("calendar.select", {
@@ -771,19 +913,19 @@ function HomeContent() {
         open={showMobileCalendarDialog}
         onOpenChange={setShowMobileCalendarDialog}
       >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <div className="w-1 h-5 bg-primary rounded-full"></div>
+        <DialogContent className="sm:max-w-md p-0 gap-0 border border-border/50 bg-gradient-to-b from-background via-background to-muted/30 backdrop-blur-xl shadow-2xl">
+          <DialogHeader className="border-b border-border/50 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-6 pb-5 space-y-1.5">
+            <DialogTitle className="flex items-center gap-2.5 text-xl font-semibold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">
+              <div className="w-1 h-5 bg-gradient-to-b from-primary to-primary/50 rounded-full"></div>
               {t("calendar.select", { default: "Your BetterShift Calendar" })}
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-sm text-muted-foreground">
               {t("calendar.selectDescription", {
                 default: "Choose a calendar to manage your shifts",
               })}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <div className="p-6">
             <CalendarSelector
               calendars={calendars}
               selectedId={selectedCalendar}
@@ -807,30 +949,41 @@ function HomeContent() {
 
       {/* Month Navigation */}
       <div className="container max-w-4xl mx-auto px-1 py-3 sm:p-4 flex-1">
-        <div className="flex items-center justify-between mb-3 sm:mb-4 px-2 sm:px-0">
+        <motion.div
+          className="flex items-center justify-between mb-4 sm:mb-5 px-2 sm:px-0"
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
           <Button
             variant="outline"
             size="icon"
-            className="h-8 w-8 sm:h-10 sm:w-10"
+            className="h-10 w-10 sm:h-11 sm:w-11 rounded-full active:scale-95 transition-transform"
             onClick={() => setCurrentDate(subMonths(currentDate, 1))}
           >
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronLeft className="h-5 w-5" />
           </Button>
-          <h2 className="text-base sm:text-xl font-semibold">
+          <motion.h2
+            className="text-lg sm:text-xl font-bold"
+            key={format(currentDate, "MMMM yyyy")}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2 }}
+          >
             {format(currentDate, "MMMM yyyy", { locale: dateLocale })}
-          </h2>
+          </motion.h2>
           <Button
             variant="outline"
             size="icon"
-            className="h-8 w-8 sm:h-10 sm:w-10"
+            className="h-10 w-10 sm:h-11 sm:w-11 rounded-full active:scale-95 transition-transform"
             onClick={() => setCurrentDate(addMonths(currentDate, 1))}
           >
-            <ChevronRight className="h-4 w-4" />
+            <ChevronRight className="h-5 w-5" />
           </Button>
-        </div>
+        </motion.div>
 
         {/* Calendar Grid */}
-        <div className="grid grid-cols-7 gap-px sm:gap-1 mb-6">
+        <div className="grid grid-cols-7 gap-0 sm:gap-1.5 mb-6">
           {[
             t("calendar_grid.monday"),
             t("calendar_grid.tuesday"),
@@ -842,7 +995,7 @@ function HomeContent() {
           ].map((day) => (
             <div
               key={day}
-              className="text-center text-xs sm:text-xs font-medium text-muted-foreground p-0.5 sm:p-2"
+              className="text-center text-[11px] sm:text-xs font-semibold text-muted-foreground p-1 sm:p-2"
             >
               {day}
             </div>
@@ -865,7 +1018,7 @@ function HomeContent() {
             };
 
             return (
-              <button
+              <motion.button
                 key={idx}
                 onClick={() => handleAddShift(day)}
                 onContextMenu={(e) => handleDayRightClick(e, day)}
@@ -873,13 +1026,14 @@ function HomeContent() {
                 onTouchEnd={handleTouchEnd}
                 onTouchMove={handleTouchEnd}
                 disabled={false}
+                whileTap={{ scale: 0.95 }}
                 style={{
                   WebkitUserSelect: "none",
                   userSelect: "none",
                   WebkitTouchCallout: "none",
                 }}
                 className={`
-                  min-h-24 sm:min-h-24 px-0.5 py-1 sm:p-2 rounded-md text-sm transition-all relative flex flex-col border-2
+                  min-h-25 sm:min-h-28 px-1 py-1.5 sm:p-2.5 rounded-md sm:rounded-lg text-sm transition-all relative flex flex-col border sm:border-2
                   ${
                     isCurrentMonth
                       ? "text-foreground"
@@ -887,32 +1041,34 @@ function HomeContent() {
                   }
                   ${
                     isTodayDate
-                      ? "border-primary shadow-md shadow-primary/20 bg-primary/5"
-                      : "border-transparent"
+                      ? "border-primary shadow-lg shadow-primary/20 bg-primary/5 ring-2 ring-primary/20"
+                      : "border-border/30 sm:border-border/50"
                   }
                   ${
                     isCurrentMonth
-                      ? "hover:bg-accent cursor-pointer active:bg-accent/80"
+                      ? "hover:bg-accent cursor-pointer active:bg-accent/80 hover:border-border"
                       : selectedPresetId
                       ? "cursor-not-allowed"
                       : "cursor-pointer"
                   }
-                  ${!isCurrentMonth ? "opacity-50" : ""}
+                  ${!isCurrentMonth ? "opacity-40" : ""}
                 `}
               >
                 <div
-                  className={`text-xs sm:text-xs font-medium mb-0.5 flex items-center justify-between ${
-                    isTodayDate ? "text-primary font-bold" : ""
+                  className={`text-sm sm:text-sm font-semibold mb-1 flex items-center justify-between ${
+                    isTodayDate ? "text-primary" : ""
                   }`}
                 >
                   <span>{day.getDate()}</span>
                   {dayNote && (
-                    <div
+                    <motion.div
                       className="group/note relative"
                       onClick={(e) => handleNoteIconClick(e, day)}
                       title={dayNote.note}
+                      whileHover={{ scale: 1.1 }}
+                      whileTap={{ scale: 0.9 }}
                     >
-                      <StickyNote className="h-3 w-3 text-amber-500 cursor-pointer hover:text-amber-600 transition-colors" />
+                      <StickyNote className="h-3.5 w-3.5 text-orange-500 cursor-pointer hover:text-orange-600 transition-colors" />
                       {/* Tooltip for desktop */}
                       <div className="hidden sm:block absolute z-50 bottom-full right-0 mb-1 invisible group-hover/note:visible opacity-0 group-hover/note:opacity-100 transition-opacity duration-200">
                         <div className="bg-popover text-popover-foreground text-xs rounded-md shadow-lg border p-2 max-w-[200px] whitespace-normal break-words">
@@ -920,14 +1076,21 @@ function HomeContent() {
                           <div className="absolute top-full right-2 -mt-1 border-4 border-transparent border-t-popover"></div>
                         </div>
                       </div>
-                    </div>
+                    </motion.div>
                   )}
                 </div>
-                <div className="flex-1 space-y-0.5 overflow-hidden">
+                <div className="flex-1 space-y-0.5 sm:space-y-1 overflow-hidden">
                   {dayShifts.slice(0, 2).map((shift) => (
-                    <div
+                    <motion.div
                       key={shift.id}
-                      className="text-[10px] sm:text-xs px-0.5 sm:px-1 py-0.5 sm:py-0.5 rounded truncate"
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      transition={{
+                        duration: 0.15,
+                        ease: "easeOut",
+                      }}
+                      className="text-[10px] sm:text-xs px-0.5 py-0.5 sm:px-1.5 sm:py-1 rounded"
                       style={{
                         backgroundColor: shift.color
                           ? `${shift.color}20`
@@ -940,7 +1103,7 @@ function HomeContent() {
                           : `(${shift.startTime} - ${shift.endTime})`
                       }`}
                     >
-                      <div className="font-medium truncate leading-tight">
+                      <div className="font-semibold line-clamp-2 leading-[1.1] sm:leading-tight">
                         {shift.title}
                       </div>
                       <div className="text-[9px] sm:text-[10px] opacity-70 leading-tight">
@@ -948,34 +1111,41 @@ function HomeContent() {
                           ? t("shift.allDay")
                           : shift.startTime.substring(0, 5)}
                       </div>
-                    </div>
+                    </motion.div>
                   ))}
                   {dayShifts.length > 2 && (
-                    <div className="text-[9px] sm:text-[10px] text-muted-foreground text-center">
+                    <div className="text-[10px] sm:text-xs text-muted-foreground font-medium text-center pt-0.5">
                       +{dayShifts.length - 2}
                     </div>
                   )}
                 </div>
-              </button>
+              </motion.button>
             );
           })}
         </div>
 
         {/* Note Hint */}
-        <div className="px-2 sm:px-0 mb-3">
-          <div className="bg-muted/30 border border-muted/50 rounded-md p-2 sm:p-2.5">
-            <div className="flex items-start gap-2">
-              <StickyNote className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
-              <div>
+        <motion.div
+          className="px-2 sm:px-0 mb-4"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+        >
+          <div className="bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 rounded-xl p-3 sm:p-3.5 backdrop-blur-sm">
+            <div className="flex items-center gap-2.5">
+              <div className="shrink-0 w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center">
+                <StickyNote className="h-4 w-4 text-orange-500" />
+              </div>
+              <div className="flex-1">
                 {/* Mobile hint */}
-                <p className="text-[11px] sm:hidden text-muted-foreground leading-snug">
+                <p className="text-xs sm:hidden text-foreground/80 leading-relaxed">
                   {t("note.hintMobile", {
                     default:
                       "Long press on a day to open notes. The note icon shows existing notes.",
                   })}
                 </p>
                 {/* Desktop hint */}
-                <p className="hidden sm:block text-xs text-muted-foreground leading-snug">
+                <p className="hidden sm:block text-sm text-foreground/80 leading-relaxed">
                   {t("note.hintDesktop", {
                     default:
                       "Right-click on a day to open notes. The note icon shows existing notes.",
@@ -984,7 +1154,7 @@ function HomeContent() {
               </div>
             </div>
           </div>
-        </div>
+        </motion.div>
 
         {/* Shifts List */}
         <div className="space-y-3 sm:space-y-4 px-2 sm:px-0">
@@ -995,115 +1165,189 @@ function HomeContent() {
             refreshTrigger={statsRefreshTrigger}
           />
 
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <h3 className="text-lg sm:text-xl font-bold">{t("shift.title")}</h3>
-            {shifts.length > 0 && (
-              <div className="flex gap-2 sm:gap-3 text-xs sm:text-sm">
-                <div className="px-2 sm:px-3 py-1 bg-primary/10 rounded-full">
-                  <span className="font-semibold text-primary">
-                    {
-                      shifts.filter((shift) => {
-                        if (!shift.date) return false;
-                        const shiftDate = new Date(shift.date);
-                        return (
-                          shiftDate.getMonth() === currentDate.getMonth() &&
-                          shiftDate.getFullYear() === currentDate.getFullYear()
-                        );
-                      }).length
-                    }
-                  </span>
-                  <span className="text-muted-foreground ml-1">
-                    <span className="hidden sm:inline">
-                      {t("shift.shiftsThisMonth")}
-                    </span>
-                    <span className="sm:hidden">{t("shift.shifts")}</span>
-                  </span>
+          <div className="border border-border/50 rounded-xl bg-gradient-to-b from-card/80 via-card/60 to-card/40 backdrop-blur-sm overflow-hidden shadow-lg">
+            <button
+              onClick={() => setShowShiftsSection(!showShiftsSection)}
+              className="w-full px-3 sm:px-4 py-3 sm:py-3.5 flex items-center justify-between hover:bg-primary/5 transition-all"
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center shadow-lg shadow-primary/20">
+                  <CalendarIcon className="h-4 w-4 sm:h-5 sm:w-5 text-primary-foreground" />
                 </div>
+                <h3 className="text-sm sm:text-base font-semibold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">
+                  {t("shift.title")}
+                </h3>
+              </div>
+              <div className="flex items-center gap-3">
+                {!showShiftsSection &&
+                  (() => {
+                    const shiftsInMonth = shifts.filter((shift) => {
+                      if (!shift.date) return false;
+                      const shiftDate = new Date(shift.date);
+                      return (
+                        shiftDate.getMonth() === currentDate.getMonth() &&
+                        shiftDate.getFullYear() === currentDate.getFullYear()
+                      );
+                    }).length;
+                    return (
+                      shiftsInMonth > 0 && (
+                        <div className="px-3 py-1.5 bg-primary/10 rounded-full">
+                          <span className="font-semibold text-primary text-xs sm:text-sm">
+                            {shiftsInMonth}
+                          </span>
+                        </div>
+                      )
+                    );
+                  })()}
+                {showShiftsSection ? (
+                  <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                )}
+              </div>
+            </button>
+
+            {showShiftsSection && (
+              <div className="border-t border-border/30 bg-muted/20 p-3 sm:p-4">
+                {shifts.filter((shift) => {
+                  if (!shift.date) return false;
+                  const shiftDate = new Date(shift.date);
+                  return (
+                    shiftDate.getMonth() === currentDate.getMonth() &&
+                    shiftDate.getFullYear() === currentDate.getFullYear()
+                  );
+                }).length === 0 ? (
+                  <motion.div
+                    className="border-2 border-dashed border-border/50 rounded-xl p-10 sm:p-14 text-center space-y-4 sm:space-y-5"
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.3 }}
+                  >
+                    <motion.div
+                      className="flex justify-center"
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{
+                        delay: 0.1,
+                        type: "spring",
+                        stiffness: 200,
+                      }}
+                    >
+                      <div className="h-16 w-16 sm:h-20 sm:w-20 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center shadow-lg">
+                        <CalendarIcon className="h-8 w-8 sm:h-10 sm:w-10 text-primary/70" />
+                      </div>
+                    </motion.div>
+                    <div className="space-y-2 sm:space-y-2.5">
+                      <h4 className="font-bold text-lg sm:text-xl text-foreground/90">
+                        {t("shift.noShiftsInMonth", {
+                          default: "No shifts this month",
+                        })}
+                      </h4>
+                      <p className="text-sm sm:text-base text-muted-foreground max-w-md mx-auto leading-relaxed">
+                        {t("shift.noShiftsInMonthDescription", {
+                          default:
+                            "Add shifts by clicking on days in the calendar above.",
+                        })}
+                      </p>
+                    </div>
+                  </motion.div>
+                ) : (
+                  <AnimatePresence mode="popLayout">
+                    <motion.div
+                      className="space-y-3 sm:space-y-4"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ staggerChildren: 0.05 }}
+                    >
+                      {Object.entries(
+                        shifts
+                          .filter((shift) => {
+                            if (!shift.date) return false;
+                            const shiftDate = new Date(shift.date);
+                            return (
+                              shiftDate.getMonth() === currentDate.getMonth() &&
+                              shiftDate.getFullYear() ===
+                                currentDate.getFullYear()
+                            );
+                          })
+                          .sort(
+                            (a, b) =>
+                              (a.date ? new Date(a.date).getTime() : 0) -
+                              (b.date ? new Date(b.date).getTime() : 0)
+                          )
+                          .reduce((acc, shift) => {
+                            const dateKey = shift.date
+                              ? format(new Date(shift.date), "yyyy-MM-dd")
+                              : "unknown";
+                            if (!acc[dateKey]) acc[dateKey] = [];
+                            acc[dateKey].push(shift);
+                            return acc;
+                          }, {} as Record<string, ShiftWithCalendar[]>)
+                      ).map(([dateKey, dayShifts], index) => (
+                        <motion.div
+                          key={dateKey}
+                          className="border border-border/50 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all bg-gradient-to-b from-card via-card to-muted/20"
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: index * 0.05 }}
+                          layout
+                        >
+                          <div className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent px-4 sm:px-5 py-2.5 sm:py-3 border-b border-border/30">
+                            <div className="flex items-center justify-between">
+                              <div className="font-bold text-sm sm:text-base flex items-center gap-2">
+                                <div className="w-1 h-5 bg-gradient-to-b from-primary to-primary/50 rounded-full"></div>
+                                {dayShifts[0].date &&
+                                  format(
+                                    new Date(dayShifts[0].date),
+                                    "EEEE, MMMM d, yyyy",
+                                    { locale: dateLocale }
+                                  )}
+                              </div>
+                              <div className="text-xs sm:text-sm px-2.5 py-1 bg-primary/15 text-primary rounded-full font-semibold shadow-sm">
+                                {dayShifts.length}{" "}
+                                {dayShifts.length === 1
+                                  ? t("shift.shift_one")
+                                  : t("shift.shifts")}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="p-3 sm:p-4 grid gap-2 sm:gap-3 sm:grid-cols-2">
+                            {dayShifts.map((shift) => (
+                              <ShiftCard
+                                key={shift.id}
+                                shift={shift}
+                                onDelete={deleteShift}
+                              />
+                            ))}
+                          </div>
+                        </motion.div>
+                      ))}
+                    </motion.div>
+                  </AnimatePresence>
+                )}
               </div>
             )}
           </div>
-
-          {shifts.length === 0 ? (
-            <div className="border-2 border-dashed rounded-lg p-8 sm:p-12 text-center space-y-3 sm:space-y-4">
-              <div className="flex justify-center">
-                <div className="h-12 w-12 sm:h-16 sm:w-16 rounded-full bg-muted flex items-center justify-center">
-                  <CalendarIcon className="h-6 w-6 sm:h-8 sm:w-8 text-muted-foreground" />
-                </div>
-              </div>
-              <div className="space-y-1 sm:space-y-2">
-                <h4 className="font-semibold text-base sm:text-lg">
-                  {t("shift.noShifts")}
-                </h4>
-                <p className="text-xs sm:text-sm text-muted-foreground max-w-md mx-auto">
-                  {presets.length === 0
-                    ? t("shift.createPresetFirst")
-                    : t("shift.noShiftsDescription")}
-                </p>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-2 sm:space-y-3">
-              {Object.entries(
-                shifts
-                  .filter((shift) => {
-                    if (!shift.date) return false;
-                    const shiftDate = new Date(shift.date);
-                    return (
-                      shiftDate.getMonth() === currentDate.getMonth() &&
-                      shiftDate.getFullYear() === currentDate.getFullYear()
-                    );
-                  })
-                  .sort(
-                    (a, b) =>
-                      (a.date ? new Date(a.date).getTime() : 0) -
-                      (b.date ? new Date(b.date).getTime() : 0)
-                  )
-                  .reduce((acc, shift) => {
-                    const dateKey = shift.date
-                      ? format(new Date(shift.date), "yyyy-MM-dd")
-                      : "unknown";
-                    if (!acc[dateKey]) acc[dateKey] = [];
-                    acc[dateKey].push(shift);
-                    return acc;
-                  }, {} as Record<string, ShiftWithCalendar[]>)
-              ).map(([dateKey, dayShifts]) => (
-                <div
-                  key={dateKey}
-                  className="border rounded-lg overflow-hidden"
-                >
-                  <div className="bg-muted/50 px-3 sm:px-4 py-1.5 sm:py-2 border-b">
-                    <div className="flex items-center justify-between">
-                      <div className="font-semibold text-xs sm:text-sm">
-                        {dayShifts[0].date &&
-                          format(
-                            new Date(dayShifts[0].date),
-                            "EEEE, MMMM d, yyyy",
-                            { locale: dateLocale }
-                          )}
-                      </div>
-                      <div className="text-[10px] sm:text-xs text-muted-foreground">
-                        {dayShifts.length}{" "}
-                        {dayShifts.length === 1
-                          ? t("shift.shift_one")
-                          : t("shift.shifts")}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="p-2 sm:p-3 grid gap-1.5 sm:gap-2 sm:grid-cols-2">
-                    {dayShifts.map((shift) => (
-                      <ShiftCard
-                        key={shift.id}
-                        shift={shift}
-                        onDelete={deleteShift}
-                      />
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       </div>
+
+      {/* Floating Action Button for Manual Shift Creation */}
+      {selectedCalendar && (
+        <motion.div
+          className="fixed bottom-6 right-6 z-50"
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ delay: 0.5, type: "spring", stiffness: 200 }}
+        >
+          <Button
+            size="lg"
+            className="h-14 w-14 sm:h-16 sm:w-16 rounded-full shadow-2xl shadow-primary/30 hover:shadow-primary/50 transition-all"
+            onClick={handleManualShiftCreation}
+          >
+            <Plus className="h-6 w-6 sm:h-7 sm:w-7" />
+          </Button>
+        </motion.div>
+      )}
 
       {/* Dialogs */}
       <CalendarDialog

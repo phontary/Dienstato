@@ -5,14 +5,11 @@
     "delete": "Delete",
     "edit": "Edit",
     "create": "Create",
-    "close": "Close",
-    "confirm": "Confirm",
     "loading": "Loading...",
     "required": "required"
   },
   "app": {
     "title": "BetterShift",
-    "description": "Manage your work shifts with ease",
     "subtitle": "Organize your shifts"
   },
   "calendar": {
@@ -23,17 +20,22 @@
     "name": "Calendar Name",
     "namePlaceholder": "e.g., My Shifts",
     "color": "Color",
-    "noCalendars": "No calendars yet",
-    "createFirst": "Create your first calendar",
     "managePassword": "Manage Password",
     "select": "Your BetterShift Calendar",
     "deleteCalendar": "Delete Calendar",
     "deleteConfirm": "Really delete calendar \"{name}\"? All shifts, presets and notes will also be deleted.",
     "deleteWarning": "This action cannot be undone. All shifts, presets, and notes will be permanently deleted.",
-    "deleteSuccess": "Calendar deleted successfully"
+    "created": "Calendar created successfully",
+    "deleted": "Calendar deleted successfully",
+    "createError": "Failed to create calendar",
+    "deleteError": "Failed to delete calendar"
+  },
+  "color": {
+    "custom": "Custom",
+    "customTitle": "Custom Color",
+    "customDescription": "Choose a custom color using the color picker"
   },
   "password": {
-    "use": "Use password",
     "optional": "Password Protection (optional)",
     "password": "Password",
     "passwordPlaceholder": "Enter password",
@@ -44,8 +46,6 @@
     "confirmPassword": "Confirm Password",
     "confirmPasswordPlaceholder": "Confirm password",
     "removePassword": "Remove Password",
-    "setPassword": "Set Password",
-    "updatePassword": "Update Password",
     "manage": "Manage Password for \"{name}\"",
     "enter": "Enter Password for \"{name}\"",
     "enterCalendarPassword": "Enter calendar password",
@@ -57,15 +57,18 @@
     "unlock": "Unlock"
   },
   "note": {
-    "title": "Notes",
     "create": "New Note",
     "edit": "Edit Note",
-    "delete": "Delete Note",
     "note": "Note",
     "notePlaceholder": "e.g., Early shift because appointment in the afternoon...",
-    "hint": "Add notes to days",
     "hintMobile": "Long press on a day to open notes. The note icon shows existing notes.",
-    "hintDesktop": "Right-click on a day to open notes. The note icon shows existing notes."
+    "hintDesktop": "Right-click on a day to open notes. The note icon shows existing notes.",
+    "created": "Note created successfully",
+    "updated": "Note updated successfully",
+    "deleted": "Note deleted successfully",
+    "createError": "Failed to create note",
+    "updateError": "Failed to update note",
+    "deleteError": "Failed to delete note"
   },
   "shift": {
     "title": "Shifts",
@@ -73,56 +76,54 @@
     "createDescription": "Add a new shift to your calendar",
     "edit": "Edit Shift",
     "editDescription": "Update the shift details",
-    "delete": "Delete Shift",
     "date": "Date",
     "startTime": "Start Time",
     "endTime": "End Time",
-    "shiftTitle": "Shift Title",
     "titlePlaceholder": "e.g., Morning Shift",
     "titleLabel": "Title",
     "color": "Color",
-    "notes": "Notes",
     "notesPlaceholder": "Additional information...",
     "notesOptional": "Notes (optional)",
     "allDay": "All Day",
     "allDayShift": "All-day shift",
-    "noShifts": "No shifts yet",
-    "noShiftsDescription": "Select a preset above and click on any day in the calendar to add your shifts.",
-    "createPresetFirst": "Create a preset first, then click on any day in the calendar to add your shifts.",
-    "shiftsThisMonth": "shifts this month",
+    "noShiftsInMonth": "No shifts this month",
+    "noShiftsInMonthDescription": "Add shifts by clicking on days in the calendar above.",
     "shifts": "shifts",
     "shift_one": "shift",
-    "shift_other": "{count} shifts",
     "selectPreset": "Select Preset",
     "none": "None",
     "addShift": "Add Shift",
-    "saveChanges": "Save Changes"
+    "saveChanges": "Save Changes",
+    "created": "Shift created successfully",
+    "updated": "Shift updated successfully",
+    "deleted": "Shift deleted successfully",
+    "createError": "Failed to create shift",
+    "updateError": "Failed to update shift",
+    "deleteError": "Failed to delete shift"
   },
   "preset": {
-    "title": "Preset",
     "create": "New Preset",
     "createNew": "Create New Preset",
     "createYourFirst": "Create Your First Preset",
     "edit": "Edit Preset",
-    "delete": "Delete Preset",
     "manage": "Manage Presets",
     "manageDescription": "Edit or delete your shift presets",
     "createDescription": "Create a new preset for quick shift creation",
     "editDescription": "Update preset details",
-    "name": "Preset Name",
     "namePlaceholder": "e.g., Morning Shift",
     "saveAsPreset": "Save as preset",
     "presetName": "Preset name",
     "presetNamePlaceholder": "e.g., Morning Shift, Evening Shift...",
     "noPresets": "No shift presets yet",
-    "createFirst": "Create your first shift preset",
     "createFirstDescription": "Create your first preset to quickly add shifts to your calendar. Presets save your frequently used shift times and details.",
-    "select": "Select a preset",
     "deleteConfirm": "Delete this preset? This will also delete all shifts created from this preset.",
-    "autoSaveEnabled": "Auto-save as preset is enabled",
-    "new": "New",
     "secondaryPresets": "Secondary Presets",
-    "markAsSecondary": "Mark as secondary (collapsed by default)"
+    "markAsSecondary": "Mark as secondary (collapsed by default)",
+    "created": "Preset created successfully",
+    "updated": "Preset updated successfully",
+    "deleted": "Preset deleted successfully",
+    "saveError": "Failed to save preset",
+    "deleteError": "Failed to delete preset"
   },
   "calendar_grid": {
     "monday": "Mon",
@@ -131,39 +132,16 @@
     "thursday": "Thu",
     "friday": "Fri",
     "saturday": "Sat",
-    "sunday": "Sun",
-    "mondayFull": "Monday",
-    "tuesdayFull": "Tuesday",
-    "wednesdayFull": "Wednesday",
-    "thursdayFull": "Thursday",
-    "fridayFull": "Friday",
-    "saturdayFull": "Saturday",
-    "sundayFull": "Sunday"
+    "sunday": "Sun"
   },
-  "language": {
-    "title": "Language",
-    "german": "Deutsch",
-    "english": "English",
-    "select": "Select Language"
-  },
-  "colors": {
-    "blue": "Blue",
-    "red": "Red",
-    "green": "Green",
-    "amber": "Amber",
-    "violet": "Violet",
-    "pink": "Pink",
-    "cyan": "Cyan",
-    "orange": "Orange"
-  },
+
   "stats": {
     "title": "Shift Statistics",
     "week": "Week",
     "month": "Month",
     "year": "Year",
     "total": "Total",
-    "noData": "No shifts in this period",
-    "shiftsTotal": "Shifts"
+    "noData": "No shifts in this period"
   },
   "onboarding": {
     "welcome": "Welcome to BetterShift",
