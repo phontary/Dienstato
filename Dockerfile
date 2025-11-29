@@ -6,8 +6,10 @@ RUN apk add --no-cache libc6-compat python3 make g++
 WORKDIR /app
 
 # Copy package files and install ALL dependencies
+# These layers are cached unless package files change
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci
 
 # Copy source code
 COPY . .
@@ -37,7 +39,8 @@ COPY --from=builder /app/drizzle.config.ts ./drizzle.config.ts
 
 # Install only production dependencies (including drizzle-kit now)
 COPY --from=builder /app/package-lock.json ./package-lock.json
-RUN npm ci --only=production
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --only=production
 
 # Create data directory for SQLite database
 RUN mkdir -p /app/data
