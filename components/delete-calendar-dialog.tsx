@@ -14,7 +14,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AlertTriangle } from "lucide-react";
-import { toast } from "sonner";
 
 interface DeleteCalendarDialogProps {
   open: boolean;
@@ -22,7 +21,6 @@ interface DeleteCalendarDialogProps {
   calendarName: string;
   hasPassword: boolean;
   onConfirm: (password?: string) => void;
-  demoMode?: boolean;
 }
 
 export function DeleteCalendarDialog({
@@ -31,7 +29,6 @@ export function DeleteCalendarDialog({
   calendarName,
   hasPassword,
   onConfirm,
-  demoMode = false,
 }: DeleteCalendarDialogProps) {
   const t = useTranslations();
   const [password, setPassword] = useState("");
@@ -44,10 +41,6 @@ export function DeleteCalendarDialog({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (demoMode) {
-      toast.error(t("demo.disabledDelete"));
-      return;
-    }
     onConfirm(hasPassword ? password : undefined);
   };
 

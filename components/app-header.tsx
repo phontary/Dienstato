@@ -21,7 +21,6 @@ interface AppHeaderProps {
   selectedPresetId: string | undefined;
   isConnected: boolean;
   showMobileCalendarDialog: boolean;
-  demoMode?: boolean;
   onSelectCalendar: (id: string) => void;
   onSelectPreset: (id: string | undefined) => void;
   onCreateCalendar: () => void;
@@ -41,7 +40,6 @@ export function AppHeader({
   selectedPresetId,
   isConnected,
   showMobileCalendarDialog,
-  demoMode = false,
   onSelectCalendar,
   onSelectPreset,
   onCreateCalendar,
@@ -124,7 +122,6 @@ export function AppHeader({
                     onCreateNew={onCreateCalendar}
                     onManagePassword={onManagePassword}
                     onDelete={onDeleteCalendar}
-                    demoMode={demoMode}
                   />
                 </div>
               </motion.div>
@@ -255,7 +252,6 @@ export function AppHeader({
                 onManagePassword();
               }}
               onDelete={onDeleteCalendar}
-              demoMode={demoMode}
             />
           </div>
         </DialogContent>

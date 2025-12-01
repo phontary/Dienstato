@@ -14,7 +14,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { toast } from "sonner";
 
 interface ManagePasswordDialogProps {
   open: boolean;
@@ -23,7 +22,6 @@ interface ManagePasswordDialogProps {
   calendarName: string;
   hasPassword: boolean;
   onSuccess: () => void;
-  demoMode?: boolean;
 }
 
 export function ManagePasswordDialog({
@@ -33,7 +31,6 @@ export function ManagePasswordDialog({
   calendarName,
   hasPassword,
   onSuccess,
-  demoMode = false,
 }: ManagePasswordDialogProps) {
   const t = useTranslations();
   const [currentPassword, setCurrentPassword] = useState("");
@@ -56,11 +53,6 @@ export function ManagePasswordDialog({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-
-    if (demoMode) {
-      toast.error(t("demo.disabledPassword"));
-      return;
-    }
 
     // Validate inputs
     if (hasPassword && !currentPassword) {
