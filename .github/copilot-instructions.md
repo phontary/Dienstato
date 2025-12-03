@@ -2,107 +2,111 @@
 
 ## Architecture Overview
 
-**BetterShift** is a Next.js 16 App Router shift management application with SQLite database, designed for managing work schedules across multiple calendars.
+**BetterShift** is a Next.js 16 App Router shift management application with SQLite database for managing work schedules across multiple calendars.
 
-### Core Architecture
+### Tech Stack
 
-- **Frontend**: Next.js 16 App Router (`app/` directory), React 19, client-side state management
-- **Backend**: Next.js API Routes (`app/api/`) with server-side logic
-- **Database**: SQLite via Drizzle ORM, file-based at `./data/sqlite.db`
-- **i18n**: next-intl with German/English support, cookie-based preference + browser detection
-- **Styling**: Tailwind CSS 4 with shadcn/ui components (`components/ui/`)
+- **Framework**: Next.js 16 with App Router (`app/` directory)
+- **UI**: React 19, Tailwind CSS 4, shadcn/ui components (`components/ui/`)
+- **Database**: SQLite via Drizzle ORM (file: `./data/sqlite.db`)
+- **i18n**: next-intl (German/English, cookie-based + browser detection)
+- **State**: Client-side with React hooks, custom hooks in `hooks/`
 
-### Data Model (lib/db/schema.ts)
+### Database Schema (`lib/db/schema.ts`)
 
-Four main tables with cascade delete relationships:
+Core tables with cascade relationships:
 
-- `calendars` → `shifts` (via calendarId), `shiftPresets`, `calendarNotes`
-- `shiftPresets` → `shifts` (via presetId, set null on delete)
-- All IDs use `crypto.randomUUID()`, timestamps stored as integers
-- Password hashing uses SHA-256 (see `lib/password-utils.ts`)
+- `calendars` → `shifts`, `shiftPresets`, `calendarNotes` (cascade delete)
+- `shiftPresets` → `shifts` (set null on delete)
+- IDs: `crypto.randomUUID()`
+- Timestamps: Stored as integers, auto-converted to Date objects
+- Passwords: SHA-256 hashed (via `lib/password-utils.ts`)
 
-## Critical Development Patterns
+## Development Guidelines
 
-### Database Workflow
+### Database Migrations
+
+After schema changes in `lib/db/schema.ts`:
 
 ```bash
-# After schema changes in lib/db/schema.ts:
-npm run db:generate  # Creates migration in drizzle/
-npm run db:migrate   # Runs pending migrations
+npm run db:generate  # Generate migration files
+npm run db:migrate   # Apply migrations
 ```
 
-**Important**: Migrations are committed to git. Schema changes require both updating `lib/db/schema.ts` AND running migrations.
+**Critical**:
 
-### API Route Patterns
+- Migrations are version-controlled
+- Never use `db:push` - prefer explicit migrations
+- Schema changes require updating `lib/db/schema.ts` AND generating migrations
 
-All API routes follow this structure (see `app/api/shifts/route.ts`):
+### API Routes
+
+Follow these patterns (see `app/api/shifts/route.ts`):
 
 ```typescript
-// GET with optional query params for filtering
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const calendarId = searchParams.get("calendarId");
-  // Always validate required params
-  if (!calendarId) return NextResponse.json({ error: "..." }, { status: 400 });
+
+  if (!calendarId) {
+    return NextResponse.json({ error: "Missing calendarId" }, { status: 400 });
+  }
 }
 
-// Dynamic routes use async params (Next.js 16)
+// Dynamic routes - params are async in Next.js 16
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await params; // Must await!
+  const { id } = await params;
 }
 ```
 
-### Password Protection Flow
+### Password Protection
 
-Calendars can be password-protected. The workflow is:
+Calendars can be password-protected. Implementation flow:
 
-1. Check localStorage for `calendar_password_${calendarId}`
-2. Verify via `/api/calendars/[id]/verify-password` POST endpoint
-3. On 401, show `PasswordDialog`, store password in localStorage
-4. Use `pendingAction` state pattern to retry after password entry
-
-Example in `app/page.tsx`:
+1. Check localStorage: `calendar_password_${calendarId}`
+2. Verify via `/api/calendars/[id]/verify-password` POST
+3. On 401: Show `PasswordDialog`, store in localStorage
+4. Use `pendingAction` state to retry operation after authentication
 
 ```typescript
 setPendingAction({ type: "edit", shiftId: id, formData });
 setShowPasswordDialog(true);
-// After password success, execute pending action
 ```
 
-### Client Component State Management
+### State Management
 
-Main page (`app/page.tsx`) uses:
+Main page (`app/page.tsx`) patterns:
 
-- `useState` for local state (shifts, presets, notes, calendars)
+- `useState` for shifts, presets, notes, calendars
 - `useEffect` for data fetching on calendar/date changes
-- URL sync via `useRouter().replace()` for selected calendar
-- Refresh triggers: `statsRefreshTrigger` counter incremented after mutations
+- `useRouter().replace()` for URL state sync
+- `statsRefreshTrigger` counter for mutation tracking
 
-### i18n Implementation
+### Internationalization
 
-Uses next-intl with auto-detection:
+next-intl setup with auto-detection:
 
-1. Cookie `NEXT_LOCALE` overrides browser preference (see `lib/i18n.ts`)
-2. Translation keys in `messages/{de,en}.json`
-3. Access via `const t = useTranslations()` then `t("shift.create")`
-4. Date formatting requires locale-specific formatters: `locale === "de" ? de : enUS`
+- Cookie `NEXT_LOCALE` overrides browser preference (`lib/i18n.ts`)
+- Translations: `messages/{de,en}.json`
+- Usage: `const t = useTranslations()` → `t("shift.create")`
+- Date formatting: `locale === "de" ? de : enUS`
 
-### Component Patterns
+### Component Design Patterns
 
-- **Dialog components** (e.g., `components/note-dialog.tsx`): Control open state via props, reset internal state on close
-- **Form submission**: Prevent default, validate, call parent callback, close dialog
-- **Preset colors**: Use `PRESET_COLORS` constant array for consistent color picker options
-- **Date handling**: Use `formatDateToLocal()` helper for consistent YYYY-MM-DD format
+- **Dialogs**: Control state via props, reset on close
+- **Forms**: Prevent default, validate, callback to parent
+- **Colors**: Use `PRESET_COLORS` array, hex format (`#3b82f6`), 20% opacity for backgrounds
+- **Dates**: `formatDateToLocal()` for YYYY-MM-DD format
 
-### Calendar Interaction Patterns
+### Calendar Interactions
 
-- **Left-click day**: Toggle shift using selected preset (requires preset selection)
-- **Right-click day**: Open note dialog (`onContextMenu` handler with `e.preventDefault()`)
-- **Shift toggle logic**: Check if matching shift exists, delete if present, create if not
-- **Notes indicator**: Display `<StickyNote>` icon when day has note
+- **Left-click**: Toggle shift with selected preset
+- **Right-click**: Open note dialog (prevent default context menu)
+- **Toggle logic**: Delete if exists, create if not
+- **Indicators**: `<StickyNote>` icon for days with notes
 
 ## Docker & Production
 
@@ -119,19 +123,19 @@ npm run dev         # http://localhost:3000
 ```bash
 cp docker-compose.override.yml.example docker-compose.override.yml
 docker-compose up -d --build
-docker compose exec bettershift npm run db:migrate  # Run migrations in container
+docker compose exec bettershift npm run db:migrate
 ```
 
-**Critical**: The Dockerfile uses multi-stage build with `next/standalone` output. The `drizzle.config.ts` must be copied to runner stage for migrations to work in production.
+**Note**: Dockerfile uses `next/standalone` output. `drizzle.config.ts` must be in runner stage for migrations.
 
 ## Common Gotchas
 
-1. **Next.js 16 Breaking Change**: Dynamic route params are now async Promises - always `await params`
-2. **SQLite Timestamps**: Use `{ mode: "timestamp" }` for date fields, stored as integers, auto-converted to Date objects
-3. **Cascade Deletes**: Deleting calendar deletes all shifts/presets/notes via `onDelete: "cascade"`
-4. **Preset Auto-Save**: Shift dialog has auto-save-as-preset enabled by default (`saveAsPreset` state)
-5. **Color Format**: Always store hex colors (e.g., `#3b82f6`), use 20% opacity for backgrounds (`${color}20`)
-6. **Mobile vs Desktop**: Separate calendar selector UIs - mobile uses dialog (`showMobileCalendarDialog`)
+1. **Next.js 16**: Dynamic route params are async - always `await params`
+2. **SQLite Timestamps**: Use `{ mode: "timestamp" }`, stored as integers, auto-converted to Date
+3. **Cascade Deletes**: Deleting calendar removes all shifts/presets/notes
+4. **Preset Auto-Save**: Shift dialog has `saveAsPreset` enabled by default
+5. **Color Format**: Store hex (`#3b82f6`), use 20% opacity for backgrounds (`${color}20`)
+6. **Mobile UI**: Separate calendar selector with `showMobileCalendarDialog`
 
 ## Adding New Features
 
@@ -139,7 +143,7 @@ docker compose exec bettershift npm run db:migrate  # Run migrations in containe
 
 1. Add table definition to `lib/db/schema.ts` with relationships
 2. Export types: `export type TableName = typeof tableName.$inferSelect;`
-3. Run `npm run db:generate && npm run db:push`
+3. Run `npm run db:generate && npm run db:migrate`
 4. Create API routes: `app/api/tablename/route.ts` and `app/api/tablename/[id]/route.ts`
 5. Add translations to `messages/de.json` and `messages/en.json`
 
@@ -158,9 +162,9 @@ docker compose exec bettershift npm run db:migrate  # Run migrations in containe
 - Production test: Use Docker locally before deploying
 - Check console errors for API failures - all errors logged with `console.error()`
 
-## Important Infos
+## Code Style Guidelines
 
-- Never run `db:push` or suggest running it.
-- All code, comments, variable names, and messages must always be in English.
-- Prefer safe migrations (db:generate + manual review).
-- Never write German code comments.
+- **Language**: All code, comments, variable names, and messages in English
+- **Comments**: Only add comments for complex logic or non-obvious behavior
+- **Migrations**: Never use `db:push` - prefer safe migrations (db:generate + manual review)
+- **Code clarity**: Write self-documenting code with clear variable/function names
