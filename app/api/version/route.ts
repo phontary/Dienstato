@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { readFileSync } from "fs";
+import { join } from "path";
 
 // Cache version info for 1 hour
 let cachedVersion: {
@@ -8,6 +10,9 @@ let cachedVersion: {
   buildDate: string;
   timestamp: number;
 } | null = null;
+
+// Cache package version at module level (initialized on first call)
+let cachedPackageVersion = "";
 
 const CACHE_SECONDS = parseInt(
   process.env.VERSION_CACHE_DURATION || "3600",
@@ -24,8 +29,27 @@ const GITHUB_REPO_NAME = process.env.GITHUB_REPO_NAME || "BetterShift";
 const GITHUB_BRANCH = process.env.GITHUB_BRANCH || "main";
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 
+function getPackageVersion(): string {
+  if (cachedPackageVersion) {
+    return cachedPackageVersion;
+  }
+
+  try {
+    const packageJsonPath = join(process.cwd(), "package.json");
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
+    cachedPackageVersion = packageJson.version || "unknown";
+    return cachedPackageVersion;
+  } catch (error) {
+    console.error("Failed to read package.json version:", error);
+    cachedPackageVersion = "unknown";
+    return "unknown";
+  }
+}
+
 async function fetchGitHubVersion() {
   try {
+    const packageVersion = getPackageVersion();
+
     // Get latest commit from configured branch
     const response = await fetch(
       `https://api.github.com/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/commits/${GITHUB_BRANCH}`,
@@ -47,7 +71,7 @@ async function fetchGitHubVersion() {
     const branch = GITHUB_BRANCH;
 
     return {
-      version: `${branch}-${commitHash}`,
+      version: packageVersion,
       branch,
       commitHash,
       buildDate: data.commit.committer.date,
@@ -98,9 +122,10 @@ export async function GET() {
   }
 
   // Fallback to dev-local if GitHub API fails
+  const packageVersion = getPackageVersion();
   return NextResponse.json(
     {
-      version: "dev-local",
+      version: packageVersion,
       branch: "unknown",
       commitHash: "unknown",
       buildDate: new Date().toISOString(),
