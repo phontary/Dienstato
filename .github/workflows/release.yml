@@ -35,8 +35,8 @@ jobs:
 
           echo "Generating changelog from $PREVIOUS_TAG to $GITHUB_REF_NAME"
 
-          # Get all commits between tags (range already excludes the tag commit)
-          ALL_COMMITS=$(git log $PREVIOUS_TAG..$GITHUB_REF_NAME --pretty=format:"%s|%h" --no-merges)
+          # Get all commits between tags, excluding the last commit (version bump)
+          ALL_COMMITS=$(git log $PREVIOUS_TAG..$GITHUB_REF_NAME --pretty=format:"%s|%h" --no-merges --skip=1)
 
           # Build changelog with grouping
           CHANGELOG=""
