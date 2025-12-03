@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { StickyNote } from "lucide-react";
+import { StickyNote, RefreshCw } from "lucide-react";
 import { ShiftWithCalendar } from "@/lib/types";
 import { CalendarNote, ICloudSync } from "@/lib/db/schema";
 import { isToday } from "date-fns";
@@ -284,9 +284,10 @@ export function CalendarGrid({
                               borderLeftWidth: "2px",
                             }}
                           >
-                            {t("icloud.syncedShiftsCount", {
-                              count: syncShifts.length,
-                            })}
+                            <span className="flex items-center justify-center gap-1">
+                              <span>+{syncShifts.length}</span>
+                              <RefreshCw className="h-3 w-3" />
+                            </span>
                           </div>
                         );
                       }

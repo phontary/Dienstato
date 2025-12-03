@@ -177,7 +177,6 @@
     "displayModeNormal": "Normal (alle Schichten anzeigen)",
     "displayModeMinimal": "Minimalistisch (nur Anzahl anzeigen)",
     "displayModeHint": "Wähle, wie synchronisierte iCloud-Schichten im Kalender angezeigt werden sollen",
-    "syncedShiftsCount": "+{count} 🗘",
     "viewSyncedShifts": "Synchronisierte Schichten anzeigen",
     "syncedShiftsTitle": "Synchronisierte Schichten - {date}",
     "addSync": "Synchronisierung hinzufügen",
