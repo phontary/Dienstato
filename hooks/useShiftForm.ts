@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ShiftFormData } from "@/components/shift-dialog";
 import { ShiftPreset } from "@/lib/db/schema";
 import { ShiftWithCalendar } from "@/lib/types";
@@ -101,10 +101,14 @@ export function useShiftForm({
     setSaveAsPreset(false);
   };
 
-  // Update form data when dialog opens or shift/date changes
+  // Sync form data when dialog state changes (refs only)
+  const formDataRef = useRef(formData);
+  formDataRef.current = formData;
+
+  // Only update on mount or when key changes
   useEffect(() => {
     if (open) {
-      setFormData({
+      const newFormData = {
         date:
           shift?.date && shift.date instanceof Date
             ? formatDateToLocal(shift.date)
@@ -117,11 +121,26 @@ export function useShiftForm({
         notes: shift?.notes || "",
         color: shift?.color || "#3b82f6",
         isAllDay: shift?.isAllDay || false,
-      });
-      setSaveAsPreset(false);
-      setPresetName("");
+      };
+
+      // Compare form data fields directly
+      const needsUpdate =
+        formDataRef.current.date !== newFormData.date ||
+        formDataRef.current.startTime !== newFormData.startTime ||
+        formDataRef.current.endTime !== newFormData.endTime ||
+        formDataRef.current.title !== newFormData.title ||
+        formDataRef.current.notes !== newFormData.notes ||
+        formDataRef.current.color !== newFormData.color ||
+        formDataRef.current.isAllDay !== newFormData.isAllDay;
+
+      if (needsUpdate) {
+        setFormData(newFormData);
+        setSaveAsPreset(false);
+        setPresetName("");
+      }
     }
-  }, [open, selectedDate, shift]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, shift?.id, selectedDate?.toString()]);
 
   return {
     formData,

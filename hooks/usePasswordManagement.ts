@@ -25,7 +25,7 @@ export function usePasswordManagement(
   const [isCalendarUnlocked, setIsCalendarUnlocked] = useState(true);
   const [isVerifyingCalendarPassword, setIsVerifyingCalendarPassword] =
     useState(false);
-  const [passwordCacheTrigger, setPasswordCacheTrigger] = useState(0);
+  const [forceUpdate, setForceUpdate] = useState(0);
 
   const selectedCalendarData = useMemo(() => {
     return calendars.find((c) => c.id === selectedCalendar);
@@ -36,7 +36,8 @@ export function usePasswordManagement(
     const requiresPassword = !!selectedCalendarData.passwordHash;
     const hasPassword = !!getCachedPassword(selectedCalendar);
     return requiresPassword && !hasPassword;
-  }, [selectedCalendar, selectedCalendarData, passwordCacheTrigger]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCalendar, selectedCalendarData, forceUpdate]);
 
   const selectedCalendarIsLocked = useMemo(() => {
     if (!selectedCalendar) return false;
@@ -46,41 +47,67 @@ export function usePasswordManagement(
 
   // Verify password when calendar changes
   useEffect(() => {
-    if (!selectedCalendar) {
-      setIsCalendarUnlocked(true);
-      setIsVerifyingCalendarPassword(false);
-      return;
-    }
+    let cancelled = false;
 
-    if (selectedCalendarIsLocked) {
-      const cachedPassword = getCachedPassword(selectedCalendar);
-
-      if (cachedPassword) {
-        setIsVerifyingCalendarPassword(true);
-        setIsCalendarUnlocked(false);
-
-        verifyAndCachePassword(selectedCalendar, cachedPassword)
-          .then((result) => {
-            setIsCalendarUnlocked(result.valid);
-          })
-          .catch(() => {
-            setIsCalendarUnlocked(false);
-          })
-          .finally(() => {
-            setIsVerifyingCalendarPassword(false);
-          });
-      } else {
-        setIsCalendarUnlocked(false);
-        setIsVerifyingCalendarPassword(false);
+    const verifyCalendar = async () => {
+      if (!selectedCalendar) {
+        if (!cancelled) {
+          setIsCalendarUnlocked(true);
+          setIsVerifyingCalendarPassword(false);
+        }
+        return;
       }
-    } else {
-      setIsCalendarUnlocked(true);
-      setIsVerifyingCalendarPassword(false);
-    }
+
+      if (selectedCalendarIsLocked) {
+        const cachedPassword = getCachedPassword(selectedCalendar);
+
+        if (cachedPassword) {
+          if (!cancelled) {
+            setIsVerifyingCalendarPassword(true);
+            setIsCalendarUnlocked(false);
+          }
+
+          verifyAndCachePassword(selectedCalendar, cachedPassword)
+            .then((result) => {
+              if (!cancelled) {
+                setIsCalendarUnlocked(result.valid);
+              }
+            })
+            .catch(() => {
+              if (!cancelled) {
+                setIsCalendarUnlocked(false);
+              }
+            })
+            .finally(() => {
+              if (!cancelled) {
+                setIsVerifyingCalendarPassword(false);
+              }
+            });
+        } else {
+          if (!cancelled) {
+            setIsCalendarUnlocked(false);
+            setIsVerifyingCalendarPassword(false);
+          }
+        }
+      } else {
+        if (!cancelled) {
+          setIsCalendarUnlocked(true);
+          setIsVerifyingCalendarPassword(false);
+        }
+      }
+    };
+
+    verifyCalendar();
+
+    return () => {
+      cancelled = true;
+    };
   }, [selectedCalendar, selectedCalendarIsLocked]);
 
   const handlePasswordSuccess = useCallback(() => {
-    setPasswordCacheTrigger((prev) => prev + 1);
+    // Password is now verified and cached - trigger re-render to update shouldHideUIElements
+    setIsCalendarUnlocked(true);
+    setForceUpdate((prev) => prev + 1);
   }, []);
 
   const verifyPasswordForAction = useCallback(

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { ShiftWithCalendar } from "@/lib/types";
 import { ShiftFormData } from "@/components/shift-dialog";
 import { toast } from "sonner";
@@ -9,7 +9,7 @@ export function useShifts(calendarId: string | undefined) {
   const t = useTranslations();
   const [shifts, setShifts] = useState<ShiftWithCalendar[]>([]);
 
-  const fetchShifts = async () => {
+  const fetchShifts = useCallback(async () => {
     if (!calendarId) return;
 
     try {
@@ -31,7 +31,7 @@ export function useShifts(calendarId: string | undefined) {
       console.error("Failed to fetch shifts:", error);
       setShifts([]);
     }
-  };
+  }, [calendarId]);
 
   const createShift = async (formData: ShiftFormData) => {
     if (!calendarId) return null;
@@ -168,13 +168,17 @@ export function useShifts(calendarId: string | undefined) {
     }
   };
 
+  // Fetch shifts when calendar changes
+
   useEffect(() => {
-    if (calendarId) {
-      fetchShifts();
-    } else {
+    if (!calendarId) {
+      // Data fetching on mount/calendar change is a valid effect use case
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setShifts([]);
+      return;
     }
-  }, [calendarId]);
+    fetchShifts();
+  }, [calendarId, fetchShifts]);
 
   return {
     shifts,
