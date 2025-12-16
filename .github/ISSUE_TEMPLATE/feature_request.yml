@@ -38,4 +38,4 @@ body:
       description: >-
         Provide a detailed description of the solution you'd like to see. If you have any ideas on how to implement the feature, please include them here.
     validations:
-      required: true
+      required: false
