@@ -83,7 +83,7 @@ export function AppFooter({ versionInfo }: AppFooterProps) {
               </a>
               {/* Buy Me a Coffee link */}
               <a
-                href="https://buymeacoffee.com/pantelx"
+                href="https://buymeacoffee.com/pantel"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1.5 text-muted-foreground hover:text-amber-500 transition-colors"
