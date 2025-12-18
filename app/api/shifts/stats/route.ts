@@ -119,6 +119,7 @@ export async function GET(request: Request) {
     >();
     let minDuration = Infinity;
     let maxDuration = 0;
+    let nonAllDayShiftCount = 0; // Track shifts with duration for accurate average
 
     result.forEach((shift) => {
       const existing = statsMap.get(shift.title) || {
@@ -131,6 +132,11 @@ export async function GET(request: Request) {
         : calculateShiftDuration(shift.startTime, shift.endTime);
       existing.totalMinutes += duration;
       statsMap.set(shift.title, existing);
+
+      // Count non-all-day shifts for average calculation
+      if (!shift.isAllDay) {
+        nonAllDayShiftCount++;
+      }
 
       // Track min/max duration (exclude all-day shifts)
       if (!shift.isAllDay && duration > 0) {
@@ -185,7 +191,8 @@ export async function GET(request: Request) {
     );
 
     const totalShifts = result.length;
-    const avgMinutesPerShift = totalShifts > 0 ? totalMinutes / totalShifts : 0;
+    const avgMinutesPerShift =
+      nonAllDayShiftCount > 0 ? totalMinutes / nonAllDayShiftCount : 0;
 
     // Calculate days with shifts for accurate daily average
     const daysWithShifts = dailyStats.size;
