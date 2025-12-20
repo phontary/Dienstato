@@ -15,11 +15,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  removeCachedPassword,
-  setCachedPassword,
-  getCachedPassword,
-} from "@/lib/password-cache";
+import { getCachedPassword } from "@/lib/password-cache";
+import { useCalendars } from "@/hooks/useCalendars";
 import { PRESET_COLORS } from "@/lib/constants";
 import { AlertTriangle, Trash2, Download } from "lucide-react";
 import { ExportDialog } from "@/components/export-dialog";
@@ -58,6 +55,9 @@ export function CalendarSettingsSheet({
   onDelete,
 }: CalendarSettingsSheetProps) {
   const t = useTranslations();
+  const { updateCalendar } = useCalendars();
+
+  // Use props directly as initial state, controlled by key prop on component
   const [name, setName] = useState(calendarName);
   const [selectedColor, setSelectedColor] = useState(calendarColor);
   const [currentPassword, setCurrentPassword] = useState("");
@@ -68,43 +68,28 @@ export function CalendarSettingsSheet({
   const [loading, setLoading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
-  const [canExport, setCanExport] = useState(false);
   const [passwordError, setPasswordError] = useState(false);
   const initialFormStateRef = useRef<FormState | null>(null);
   const currentPasswordRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (open) {
-      setName(calendarName);
-      setSelectedColor(calendarColor);
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
-      setRemovePassword(false);
-      setLockCalendar(isLocked);
-      setPasswordError(false);
-      setShowDeleteConfirm(false);
-      setShowExportDialog(false);
+  // Calculate export permission based on password state (no useEffect needed)
+  const canExport =
+    !hasPassword || !isLocked || !!getCachedPassword(calendarId);
 
-      // Store initial form state for change detection
+  // Initialize form state reference when opening
+  useEffect(() => {
+    if (open && !initialFormStateRef.current) {
       initialFormStateRef.current = {
         name: calendarName,
         selectedColor: calendarColor,
         lockCalendar: isLocked,
         removePassword: false,
       };
-
-      // Check if export is allowed (no password or password is cached)
-      if (!hasPassword || !isLocked) {
-        setCanExport(true);
-      } else {
-        const cachedPassword = getCachedPassword(calendarId);
-        setCanExport(!!cachedPassword);
-      }
-    } else {
+    }
+    if (!open) {
       initialFormStateRef.current = null;
     }
-  }, [open, calendarName, calendarColor, isLocked, hasPassword, calendarId]);
+  }, [open, calendarName, calendarColor, isLocked]);
 
   const hasChanges = () => {
     if (!initialFormStateRef.current) return false;
@@ -164,74 +149,28 @@ export function CalendarSettingsSheet({
 
     setLoading(true);
 
-    try {
-      const requestBody: {
-        name?: string;
-        color?: string;
-        currentPassword?: string;
-        isLocked: boolean;
-        password?: string | null;
-      } = {
-        name: name !== calendarName ? name : undefined,
-        color: selectedColor !== calendarColor ? selectedColor : undefined,
-        currentPassword: hasPassword ? currentPassword : undefined,
-        isLocked: lockCalendar,
-      };
+    const updates = {
+      name: name !== calendarName ? name : undefined,
+      color: selectedColor !== calendarColor ? selectedColor : undefined,
+      currentPassword: hasPassword ? currentPassword : undefined,
+      isLocked: lockCalendar,
+      password: removePassword
+        ? (null as null)
+        : newPassword
+        ? newPassword
+        : undefined,
+    };
 
-      // Include password fields if changing password
-      if (removePassword) {
-        requestBody.password = null;
-      } else if (newPassword) {
-        requestBody.password = newPassword;
-      }
+    const result = await updateCalendar(calendarId, updates);
 
-      const response = await fetch(`/api/calendars/${calendarId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody),
-      });
+    setLoading(false);
 
-      if (response.status === 401) {
-        toast.error(t("validation.passwordIncorrect"));
-        setPasswordError(true);
-        currentPasswordRef.current?.focus();
-        setLoading(false);
-        return;
-      }
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        toast.error(
-          errorData.error ||
-            t("common.updateError", { item: t("calendar.title") })
-        );
-        setLoading(false);
-        return;
-      }
-
-      // Handle localStorage based on what changed
-      if (removePassword) {
-        // Only remove from localStorage if password was actually removed
-        removeCachedPassword(calendarId);
-      } else if (newPassword) {
-        // New password was set, update localStorage
-        setCachedPassword(calendarId, newPassword);
-      } else if (hasPassword && currentPassword) {
-        // Only isLocked changed, keep the current password cached
-        setCachedPassword(calendarId, currentPassword);
-      }
-
+    if (result.success) {
       onSuccess();
       onOpenChange(false);
-    } catch (error) {
-      console.error("Failed to update calendar:", error);
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : t("common.updateError", { item: t("calendar.title") })
-      );
-    } finally {
-      setLoading(false);
+    } else if (result.error === "unauthorized") {
+      setPasswordError(true);
+      currentPasswordRef.current?.focus();
     }
   };
 

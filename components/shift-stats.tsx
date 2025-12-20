@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,9 +10,27 @@ import {
   PieChart,
   Radar as RadarIcon,
 } from "lucide-react";
-import { getCachedPassword } from "@/lib/password-cache";
 import { formatDuration } from "@/lib/date-utils";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useShiftStats } from "@/hooks/useShiftStats";
+import {
+  PieChart as RechartsPieChart,
+  Pie,
+  Cell,
+  ResponsiveContainer,
+  Tooltip,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Legend,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  Radar,
+} from "recharts";
 
 // Hook for responsive radius that's SSR-safe
 function useResponsiveRadius() {
@@ -38,40 +56,38 @@ function useResponsiveRadius() {
   return radius;
 }
 
-import {
-  PieChart as RechartsPieChart,
-  Pie,
-  Cell,
-  ResponsiveContainer,
-  Tooltip,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Legend,
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
-  Radar,
-} from "recharts";
-
-interface ShiftStats {
-  period: string;
-  startDate: string;
-  endDate: string;
-  stats: Record<string, { count: number; totalMinutes: number }>;
-  totalMinutes: number;
-  totalShifts: number;
-  avgMinutesPerShift: number;
-  avgShiftsPerDay: number;
-  avgMinutesPerDay: number;
-  minDuration: number;
-  maxDuration: number;
-  daysWithShifts: number;
-  trendData: Array<{ date: string; count: number; totalMinutes: number }>;
-}
+// CustomTooltip component - declared outside to avoid recreation on each render
+const CustomTooltip = ({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: Array<{
+    name: string;
+    value: number;
+    color: string;
+    dataKey?: string;
+    payload: { fullName?: string; name?: string };
+  }>;
+}) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-card/95 backdrop-blur-sm border border-border rounded-lg p-3 shadow-lg">
+        <p className="font-semibold text-sm mb-1">
+          {payload[0].payload.fullName || payload[0].name}
+        </p>
+        {payload.map((entry) => (
+          <p key={entry.name} className="text-xs text-muted-foreground">
+            <span style={{ color: entry.color }}>{entry.name}:</span>{" "}
+            {entry.value}
+            {entry.name === "hours" || entry.dataKey === "hours" ? "h" : ""}
+          </p>
+        ))}
+      </div>
+    );
+  }
+  return null;
+};
 
 interface ShiftStatsProps {
   calendarId: string | undefined;
@@ -104,55 +120,15 @@ export function ShiftStats({
   const t = useTranslations();
   const [period, setPeriod] = useState<"week" | "month" | "year">("month");
   const [viewMode, setViewMode] = useState<ViewMode>("overview");
-  const [stats, setStats] = useState<ShiftStats | null>(null);
-  const [loading, setLoading] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
-  const isInitialLoadRef = useRef(true);
   const outerRadius = useResponsiveRadius();
 
-  const fetchStats = useCallback(
-    async (silent = false) => {
-      if (!calendarId) return;
-
-      if (!silent) {
-        setLoading(true);
-      }
-
-      try {
-        const password = getCachedPassword(calendarId);
-        const params = new URLSearchParams({
-          calendarId,
-          period,
-          date: currentDate.toISOString(),
-        });
-        if (password) {
-          params.append("password", password);
-        }
-
-        const response = await fetch(`/api/shifts/stats?${params}`);
-        if (!response.ok) {
-          return; // Calendar is locked and no valid password
-        }
-        const data = await response.json();
-        setStats(data);
-      } catch (error) {
-        console.error("Failed to fetch shift statistics:", error);
-      } finally {
-        if (!silent) {
-          setLoading(false);
-        }
-      }
-    },
-    [calendarId, period, currentDate]
-  );
-
-  // Fetch stats when dependencies change
-  useEffect(() => {
-    if (calendarId) {
-      fetchStats(!isInitialLoadRef.current);
-      isInitialLoadRef.current = false;
-    }
-  }, [calendarId, refreshTrigger, fetchStats]);
+  const { stats, loading } = useShiftStats({
+    calendarId,
+    currentDate,
+    period,
+    refreshTrigger,
+  });
 
   if (!calendarId) return null;
 
@@ -194,38 +170,6 @@ export function ShiftStats({
             : 0,
         }))
     : [];
-
-  const CustomTooltip = ({
-    active,
-    payload,
-  }: {
-    active?: boolean;
-    payload?: Array<{
-      name: string;
-      value: number;
-      color: string;
-      dataKey?: string;
-      payload: { fullName?: string; name?: string };
-    }>;
-  }) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-card/95 backdrop-blur-sm border border-border rounded-lg p-3 shadow-lg">
-          <p className="font-semibold text-sm mb-1">
-            {payload[0].payload.fullName || payload[0].name}
-          </p>
-          {payload.map((entry) => (
-            <p key={entry.name} className="text-xs text-muted-foreground">
-              <span style={{ color: entry.color }}>{entry.name}:</span>{" "}
-              {entry.value}
-              {entry.name === "hours" || entry.dataKey === "hours" ? "h" : ""}
-            </p>
-          ))}
-        </div>
-      );
-    }
-    return null;
-  };
 
   return (
     <div className="border border-border/50 rounded-xl bg-gradient-to-b from-card/80 via-card/60 to-card/40 backdrop-blur-sm overflow-hidden shadow-lg">
