@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { calendars, shifts, externalSyncs } from "@/lib/db/schema";
 import { eq, and, gte, lte, or, isNull } from "drizzle-orm";
-import { verifyPassword } from "@/lib/password-utils";
 import { eventEmitter, CalendarChangeEvent } from "@/lib/event-emitter";
+import { getSessionUser } from "@/lib/auth/sessions";
+import { canViewCalendar, canEditCalendar } from "@/lib/auth/permissions";
 
 // GET shifts for a calendar (with optional date filter)
 export async function GET(request: Request) {
@@ -19,9 +20,9 @@ export async function GET(request: Request) {
       );
     }
 
-    const password = searchParams.get("password");
+    const user = await getSessionUser(request.headers);
 
-    // Fetch calendar to check password
+    // Fetch calendar
     const [calendar] = await db
       .select()
       .from(calendars)
@@ -34,14 +35,13 @@ export async function GET(request: Request) {
       );
     }
 
-    // Verify password if calendar is protected AND locked
-    if (calendar.passwordHash && calendar.isLocked) {
-      if (!password || !verifyPassword(password, calendar.passwordHash)) {
-        return NextResponse.json(
-          { error: "Invalid password" },
-          { status: 401 }
-        );
-      }
+    // Check read permission (works for both authenticated users and guests)
+    const hasAccess = await canViewCalendar(user?.id, calendarId);
+    if (!hasAccess) {
+      return NextResponse.json(
+        { error: "Insufficient permissions" },
+        { status: 403 }
+      );
     }
 
     const query = db
@@ -104,7 +104,7 @@ export async function GET(request: Request) {
   }
 }
 
-// POST create new shift
+// POST create new shift (requires write permission)
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -119,7 +119,6 @@ export async function POST(request: Request) {
       presetId,
       isAllDay,
       isSecondary,
-      password,
     } = body;
 
     if (!calendarId || !date || !title) {
@@ -129,7 +128,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // Fetch calendar to check password
+    const user = await getSessionUser(request.headers);
+
+    // Fetch calendar
     const [calendar] = await db
       .select()
       .from(calendars)
@@ -142,14 +143,13 @@ export async function POST(request: Request) {
       );
     }
 
-    // Verify password if calendar is protected
-    if (calendar.passwordHash) {
-      if (!password || !verifyPassword(password, calendar.passwordHash)) {
-        return NextResponse.json(
-          { error: "Invalid password" },
-          { status: 401 }
-        );
-      }
+    // Check write permission (works for both authenticated users and guests)
+    const hasAccess = await canEditCalendar(user?.id, calendarId);
+    if (!hasAccess) {
+      return NextResponse.json(
+        { error: "Insufficient permissions. Write access required." },
+        { status: 403 }
+      );
     }
 
     const [shift] = await db

@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { getCachedPassword } from "@/lib/password-cache";
 import {
   Dialog,
   DialogContent,
@@ -29,7 +28,6 @@ import {
   CheckCheck,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Skeleton } from "@/components/ui/skeleton";
 
 interface SyncNotificationDialogProps {
   open: boolean;
@@ -64,11 +62,7 @@ export function SyncNotificationDialog({
         setLoading(true);
       }
       try {
-        const password = getCachedPassword(calendarId);
         const params = new URLSearchParams({ calendarId, limit: "20" });
-        if (password) {
-          params.append("password", password);
-        }
 
         const response = await fetch(`/api/sync-logs?${params}`);
         if (response.ok) {
@@ -141,12 +135,10 @@ export function SyncNotificationDialog({
     setShowDeleteConfirm(false);
 
     try {
-      const password = getCachedPassword(calendarId);
-
       const response = await fetch(`/api/sync-logs?calendarId=${calendarId}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({}),
       });
 
       if (response.ok) {
@@ -174,14 +166,12 @@ export function SyncNotificationDialog({
 
     setIsMarkingRead(true);
     try {
-      const password = getCachedPassword(calendarId);
-
       const response = await fetch(
         `/api/sync-logs?calendarId=${calendarId}&action=markErrorsAsRead`,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ password }),
+          body: JSON.stringify({}),
         }
       );
 
@@ -267,10 +257,8 @@ export function SyncNotificationDialog({
 
           <div className="space-y-4 overflow-y-auto flex-1 px-6 pb-6">
             {loading ? (
-              <div className="space-y-4">
-                <Skeleton className="h-32 w-full rounded-lg" />
-                <Skeleton className="h-32 w-full rounded-lg" />
-                <Skeleton className="h-32 w-full rounded-lg" />
+              <div className="text-center py-8 text-muted-foreground">
+                {t("common.loading")}
               </div>
             ) : filteredLogs.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">

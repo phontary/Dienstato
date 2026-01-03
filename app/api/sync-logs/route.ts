@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { syncLogs, calendars } from "@/lib/db/schema";
 import { eq, desc, and } from "drizzle-orm";
-import { verifyPassword } from "@/lib/password-utils";
+import { getSessionUser } from "@/lib/auth/sessions";
+import { canViewCalendar, canEditCalendar } from "@/lib/auth/permissions";
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const calendarId = searchParams.get("calendarId");
   const limit = parseInt(searchParams.get("limit") || "50");
-  const password = searchParams.get("password");
 
   if (!calendarId) {
     return NextResponse.json(
@@ -18,7 +18,9 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Fetch calendar to check password
+    const user = await getSessionUser(request.headers);
+
+    // Fetch calendar
     const [calendar] = await db
       .select()
       .from(calendars)
@@ -31,14 +33,13 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Verify password if calendar is protected AND locked
-    if (calendar.passwordHash && calendar.isLocked) {
-      if (!password || !verifyPassword(password, calendar.passwordHash)) {
-        return NextResponse.json(
-          { error: "Invalid password" },
-          { status: 401 }
-        );
-      }
+    // Check read permission (works for both authenticated users and guests)
+    const hasAccess = await canViewCalendar(user?.id, calendarId);
+    if (!hasAccess) {
+      return NextResponse.json(
+        { error: "Insufficient permissions" },
+        { status: 403 }
+      );
     }
 
     const logs = await db
@@ -71,20 +72,9 @@ export async function PATCH(request: NextRequest) {
   }
 
   try {
-    // Read password from request body
-    let password: string | null = null;
-    const contentType = request.headers.get("content-type");
+    const user = await getSessionUser(request.headers);
 
-    if (contentType?.includes("application/json")) {
-      try {
-        const body = await request.json();
-        password = body.password || null;
-      } catch {
-        // If body parsing fails, continue with null password
-      }
-    }
-
-    // Fetch calendar to check password
+    // Fetch calendar
     const [calendar] = await db
       .select()
       .from(calendars)
@@ -97,14 +87,12 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // Verify password if calendar is protected
-    if (calendar.passwordHash) {
-      if (!password || !verifyPassword(password, calendar.passwordHash)) {
-        return NextResponse.json(
-          { error: "Invalid password" },
-          { status: 401 }
-        );
-      }
+    // Check write permission (if auth is enabled)
+    if (user && !(await canEditCalendar(user.id, calendarId))) {
+      return NextResponse.json(
+        { error: "Insufficient permissions. Write access required." },
+        { status: 403 }
+      );
     }
 
     if (action === "markErrorsAsRead") {
@@ -141,20 +129,9 @@ export async function DELETE(request: NextRequest) {
   }
 
   try {
-    // Read password from request body
-    let password: string | null = null;
-    const contentType = request.headers.get("content-type");
+    const user = await getSessionUser(request.headers);
 
-    if (contentType?.includes("application/json")) {
-      try {
-        const body = await request.json();
-        password = body.password || null;
-      } catch {
-        // If body parsing fails, continue with null password
-      }
-    }
-
-    // Fetch calendar to check password
+    // Fetch calendar
     const [calendar] = await db
       .select()
       .from(calendars)
@@ -167,14 +144,13 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Verify password if calendar is protected
-    if (calendar.passwordHash) {
-      if (!password || !verifyPassword(password, calendar.passwordHash)) {
-        return NextResponse.json(
-          { error: "Invalid password" },
-          { status: 401 }
-        );
-      }
+    // Check write permission (works for both authenticated users and guests)
+    const hasWriteAccess = await canEditCalendar(user?.id, calendarId);
+    if (!hasWriteAccess) {
+      return NextResponse.json(
+        { error: "Insufficient permissions. Write access required." },
+        { status: 403 }
+      );
     }
 
     await db.delete(syncLogs).where(eq(syncLogs.calendarId, calendarId));

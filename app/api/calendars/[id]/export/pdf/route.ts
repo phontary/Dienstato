@@ -1,18 +1,25 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { calendars, shifts } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import { verifyPassword } from "@/lib/password-utils";
 import { jsPDF } from "jspdf";
+import { getSessionUser } from "@/lib/auth/sessions";
+import { canViewCalendar } from "@/lib/auth/permissions";
+import { rateLimit } from "@/lib/rate-limiter";
 
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
+    const user = await getSessionUser(request.headers);
+
+    // Rate limiting: 10 PDF exports per 10 minutes
+    const rateLimitResponse = rateLimit(request, user?.id, "export-pdf");
+    if (rateLimitResponse) return rateLimitResponse;
+
     const { searchParams } = new URL(request.url);
-    const password = searchParams.get("password");
     const month = searchParams.get("month"); // Format: YYYY-MM
     const year = searchParams.get("year"); // Format: YYYY
     const locale = searchParams.get("locale") || "en"; // Default to English
@@ -29,14 +36,13 @@ export async function GET(
       );
     }
 
-    // Check password protection
-    if (calendar.passwordHash && calendar.isLocked) {
-      if (!password || !verifyPassword(password, calendar.passwordHash)) {
-        return NextResponse.json(
-          { error: "Invalid password" },
-          { status: 401 }
-        );
-      }
+    // Check read permission (works for both authenticated users and guests)
+    const hasAccess = await canViewCalendar(user?.id, id);
+    if (!hasAccess) {
+      return NextResponse.json(
+        { error: "Insufficient permissions" },
+        { status: 403 }
+      );
     }
 
     // Get all shifts for this calendar

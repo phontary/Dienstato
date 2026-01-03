@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { shiftPresets, shifts, calendars } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import { verifyPassword } from "@/lib/password-utils";
 import { eventEmitter, CalendarChangeEvent } from "@/lib/event-emitter";
+import { getSessionUser } from "@/lib/auth/sessions";
+import { canViewCalendar, canEditCalendar } from "@/lib/auth/permissions";
 
 // GET single preset
 export async function GET(
@@ -12,8 +13,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const { searchParams } = new URL(request.url);
-    const password = searchParams.get("password");
+    const user = await getSessionUser(request.headers);
 
     const [preset] = await db
       .select()
@@ -24,7 +24,7 @@ export async function GET(
       return NextResponse.json({ error: "Preset not found" }, { status: 404 });
     }
 
-    // Fetch calendar to check password
+    // Fetch calendar
     const [calendar] = await db
       .select()
       .from(calendars)
@@ -37,14 +37,13 @@ export async function GET(
       );
     }
 
-    // Verify password if calendar is protected AND locked
-    if (calendar.passwordHash && calendar.isLocked) {
-      if (!password || !verifyPassword(password, calendar.passwordHash)) {
-        return NextResponse.json(
-          { error: "Invalid password" },
-          { status: 401 }
-        );
-      }
+    // Check read permission (works for both authenticated users and guests)
+    const hasAccess = await canViewCalendar(user?.id, preset.calendarId);
+    if (!hasAccess) {
+      return NextResponse.json(
+        { error: "Insufficient permissions" },
+        { status: 403 }
+      );
     }
 
     return NextResponse.json(preset);
@@ -74,8 +73,9 @@ export async function PATCH(
       isSecondary,
       isAllDay,
       hideFromStats,
-      password,
     } = body;
+
+    const user = await getSessionUser(request.headers);
 
     // Fetch preset to get calendar ID
     const [existingPreset] = await db
@@ -87,7 +87,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Preset not found" }, { status: 404 });
     }
 
-    // Fetch calendar to check password
+    // Fetch calendar
     const [calendar] = await db
       .select()
       .from(calendars)
@@ -100,14 +100,16 @@ export async function PATCH(
       );
     }
 
-    // Verify password if calendar is protected
-    if (calendar.passwordHash) {
-      if (!password || !verifyPassword(password, calendar.passwordHash)) {
-        return NextResponse.json(
-          { error: "Invalid password" },
-          { status: 401 }
-        );
-      }
+    // Check edit permission (works for both authenticated users and guests)
+    const hasAccess = await canEditCalendar(
+      user?.id,
+      existingPreset.calendarId
+    );
+    if (!hasAccess) {
+      return NextResponse.json(
+        { error: "Insufficient permissions" },
+        { status: 403 }
+      );
     }
 
     const [updatedPreset] = await db
@@ -165,19 +167,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-
-    // Read password from request body
-    let password: string | null = null;
-    const contentType = request.headers.get("content-type");
-
-    if (contentType?.includes("application/json")) {
-      try {
-        const body = await request.json();
-        password = body.password || null;
-      } catch {
-        // If body parsing fails, continue with null password
-      }
-    }
+    const user = await getSessionUser(request.headers);
 
     // Fetch preset to get calendar ID
     const [preset] = await db
@@ -189,7 +179,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Preset not found" }, { status: 404 });
     }
 
-    // Fetch calendar to check password
+    // Fetch calendar
     const [calendar] = await db
       .select()
       .from(calendars)
@@ -202,14 +192,13 @@ export async function DELETE(
       );
     }
 
-    // Verify password if calendar is protected
-    if (calendar.passwordHash) {
-      if (!password || !verifyPassword(password, calendar.passwordHash)) {
-        return NextResponse.json(
-          { error: "Invalid password" },
-          { status: 401 }
-        );
-      }
+    // Check edit permission (works for both authenticated users and guests)
+    const hasAccess = await canEditCalendar(user?.id, preset.calendarId);
+    if (!hasAccess) {
+      return NextResponse.json(
+        { error: "Insufficient permissions" },
+        { status: 403 }
+      );
     }
 
     // Delete all shifts that were created from this preset

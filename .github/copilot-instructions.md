@@ -1,296 +1,385 @@
-# BetterShift Copilot Instructions
+# BetterShift AI Coding Instructions
 
-## Quick Reference
+## Project Overview
 
-- **Framework**: Next.js 16 App Router + React 19
-- **Database**: SQLite + Drizzle ORM (`./data/sqlite.db`)
-- **UI**: Tailwind CSS 4 + shadcn/ui + BaseSheet component
-- **i18n**: next-intl (de/en/it) - always use informal "du" in German
-- **Critical**: Never use `db:push`, always generate migrations
-- **State**: ALWAYS use existing hooks from `hooks/` - NEVER implement custom fetch logic
+**BetterShift** is a modern shift management web application for variable work schedules. Users manage unlimited calendars with one-click shift toggles, external calendar sync (iCal/Google/Outlook), calendar sharing with granular permissions, reusable presets, and multi-language support. Built with **Next.js 16 (App Router)**, **React 19**, **SQLite + Drizzle ORM**, and **Better Auth**.
 
-## Core Architecture
+## Tech Stack Quick Reference
 
-### Tech Stack
+- **Frontend**: Next.js 16 (App Router), React 19, TypeScript 5 (strict mode)
+- **UI**: Tailwind CSS 4, shadcn/ui (Radix UI primitives), Lucide icons, Motion animations
+- **Database**: SQLite (via better-sqlite3) + Drizzle ORM 0.44
+- **Auth**: Better Auth 1.4 (enabled by default) - email/password + OAuth (Google/GitHub/Discord) + custom OIDC
+- **i18n**: next-intl 4.5 - Supported locales: `en`, `de`, `it`
+- **Key Libraries**: date-fns, ical.js, jsPDF, @dnd-kit, recharts, sonner (toasts)
 
-- **Framework**: Next.js 16 with App Router (`app/` directory)
-- **UI**: React 19, Tailwind CSS 4, shadcn/ui components (`components/ui/`)
-- **Database**: SQLite via Drizzle ORM (file: `./data/sqlite.db`)
-- **i18n**: next-intl (German/English/Italian, cookie-based + browser detection)
-- **State**: Client-side with React hooks, custom hooks in `hooks/`
+## Architecture Patterns
 
-### Database Schema
+### 1. Server Components First
 
-Core tables with cascade relationships:
+- **Default**: All components under `app/` are Server Components unless marked with `"use client"`
+- **Client boundaries**: Components in `/components` are `"use client"` by default (interactive UI)
+- API routes are in `app/api/**` with `GET/POST/PUT/PATCH/DELETE` exports
 
-- `calendars` → `shifts`, `shiftPresets`, `calendarNotes` (cascade delete)
-- `shiftPresets` → `shifts` (set null on delete)
-- IDs: `crypto.randomUUID()`, Timestamps: integers (auto-converted to Date)
-- Passwords: SHA-256 hashed via `lib/password-utils.ts`
+### 2. Database Layer
 
-### Database Migrations
+**Location**: [`lib/db/schema.ts`](lib/db/schema.ts)
+
+**Key tables**:
+
+- `user`, `session`, `account`, `verification` (Better Auth tables)
+- `calendars` - has `ownerId` (nullable), `guestPermission` (`none`/`read`/`write`)
+- `calendarShares` - many-to-many with permissions (`owner`/`admin`/`write`/`read`)
+- `shifts`, `presets`, `notes`, `externalSyncs`, `syncLogs`
+
+**Migrations**: Use Drizzle Kit commands:
 
 ```bash
-npm run db:generate  # Generate migration files
-npm run db:migrate   # Apply migrations
+npm run db:generate  # Generate SQL from schema changes
+npm run db:migrate   # Apply migrations to database
+npm run db:studio    # Open Drizzle Studio GUI
 ```
 
-**Critical**: Never use `db:push` - prefer explicit migrations. Schema changes require updating `lib/db/schema.ts` AND generating migrations.
+### 3. Authentication & Permissions
 
-### API Routes
+**Feature flag**: Auth is **enabled by default** (`AUTH_ENABLED=true`) for better security. Can be disabled by setting `AUTH_ENABLED=false`.
 
-Next.js 16 pattern - dynamic params are async:
+**Configuration**: [`lib/auth.ts`](lib/auth.ts), [`lib/auth/env.ts`](lib/auth/env.ts), [`lib/public-config.ts`](lib/public-config.ts)
+
+#### Hybrid Approach: When to Use Better Auth vs. Custom Code
+
+**✅ Use Better Auth for:**
+
+- **Authentication**: Login, logout, session management, token handling
+- **OAuth**: Google, GitHub, Discord, custom OIDC integration
+- **Admin Operations**: `auth.api.banUser()`, `auth.api.setUserPassword()`, `auth.api.removeUser()`
+- **Access Control Config**: Role registration (`lib/auth/access-control.ts`) - only for Better Auth internal use
+
+**✅ Use Custom Code for:**
+
+- **Permission Checks**: All `canEditUser()`, `canDeleteUser()`, `canBanUser()` functions in `lib/auth/admin.ts`
+- **Calendar Permissions**: `owner > admin > write > read` hierarchy in `lib/auth/permissions.ts`
+- **Admin UI Logic**: User management, filtering, sorting (direct DB queries)
+- **Audit Logging**: App-specific event tracking in `lib/audit-log.ts`
+
+**Why**: Better Auth handles auth operations (with automatic session revocation, BCrypt hashing, etc.), while custom code provides synchronous, simple permission checks without async overhead. See [`MIGRATION_PLAN.md`](MIGRATION_PLAN.md) for full details.
+
+#### Calendar Permission Hierarchy
+
+**Permission hierarchy** (highest to lowest):
+
+1. `owner` - Created the calendar, full control
+2. `admin` - Can manage shares and settings
+3. `write` - Can edit shifts/notes/presets
+4. `read` - View only
+
+**Critical functions** in [`lib/auth/permissions.ts`](lib/auth/permissions.ts):
+
+- `getUserCalendarPermission(userId, calendarId)` - Returns permission level or `null`
+- `checkPermission(userId, calendarId, required)` - Boolean check with hierarchy
+- `getUserAccessibleCalendars(userId)` - Returns all calendars user can access
+- `canViewCalendar(userId, calendarId)` - Shorthand for read permission check
+
+**Guest access**: When auth is enabled, unauthenticated users (`userId = null`) can access calendars with `guestPermission != "none"`. Use `allowGuestAccess()` to check if feature is enabled.
+
+#### Session Management
+
+**Session utilities** in [`lib/auth/sessions.ts`](lib/auth/sessions.ts):
 
 ```typescript
-// Dynamic routes - ALWAYS await params
-export async function PUT(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id } = await params;
-}
+import {
+  getSessionUser,
+  getUserSessions,
+  revokeAllSessions,
+} from "@/lib/auth/sessions";
+
+// Get current user from request (API routes)
+const user = await getSessionUser(request.headers);
+
+// Session management (API routes only - for bulk operations)
+const sessions = await getUserSessions(userId, currentSessionId);
+await revokeAllSessions(userId, exceptCurrentId); // Bulk revoke all except current
 ```
 
-### Password Protection
-
-Two-tier system via `passwordHash` and `isLocked`:
-
-- **Write-Only** (`isLocked=false`): Password for mutations only
-- **Full Lock** (`isLocked=true`): Password for all operations
-
-**Key Implementation**:
+**Client-side session management**: Use Better Auth's built-in client functions:
 
 ```typescript
-// GET - check isLocked flag
-if (calendar.passwordHash && calendar.isLocked) {
-  // Require password
-}
+import { authClient } from "@/lib/auth/client";
 
-// POST/PUT/DELETE - always check passwordHash
-if (calendar.passwordHash) {
-  // Require password
-}
+// List all active sessions for current user
+const sessions = await authClient.listSessions();
+
+// Revoke all other sessions (except current)
+await authClient.revokeOtherSessions();
 ```
 
-**Client-Side Flow**:
+**Session management hook** in [`hooks/useSessions.ts`](hooks/useSessions.ts):
 
-- Use `lib/password-cache.ts`: `getCachedPassword()`, `verifyAndCachePassword()`, `setCachedPassword()`, `removeCachedPassword()`
-- All data hooks auto-include cached passwords in requests
-- Locked calendars show integrated unlock form - no page reload needed
-- Hooks return empty arrays on 401 (graceful degradation)
+```typescript
+const { sessions, isLoading, revokeAllSessions } = useSessions();
 
-### State Management & Custom Hooks
+// Revoke all other sessions
+await revokeAllSessions(); // Uses authClient.revokeOtherSessions() internally
+```
 
-**CRITICAL: ALWAYS use existing custom hooks instead of implementing custom logic.**
+**Note**: Individual session revocation is not supported to prevent users from accidentally revoking their own active session. Only "revoke all other sessions" is available.
 
-#### Available Custom Hooks
+**UI permission checks**: Use `useCalendarPermission(calendarId)` hook:
 
-**Data Management** (CRUD operations):
+```typescript
+const { canEdit, canDelete, canShare, permission } =
+  useCalendarPermission(calendarId);
+```
 
-- `useCalendars()` - Calendar CRUD with auto-password caching
-- `useShifts()` - Shift CRUD with optimistic updates
-- `usePresets()` - Preset fetching with silent refresh
-- `usePresetManagement()` - Preset CRUD operations
-- `useNotes()` - Note CRUD with password protection
-- `useShiftStats()` - Aggregated shift statistics
-- `useCompareCalendars()` - Multi-calendar data for compare mode
+### 4. Public Configuration (Environment Variables)
 
-**Action Hooks** (Complex operations):
+**NO MORE `NEXT_PUBLIC_` prefixes!** Server-only variables are exposed to the client safely via SSR injection.
 
-- `useShiftActions()` - Shift operations with password handling & optimistic UI
-- `useNoteActions()` - Note dialog state & submission flow
+**Architecture**:
 
-**Password Management**:
+- **Server-side**: [`lib/public-config.ts`](lib/public-config.ts) - `getPublicConfig()` function defines what's exposed
+- **Client-side**: [`hooks/usePublicConfig.ts`](hooks/usePublicConfig.ts) - `usePublicConfig()` hook for React components
+- **SSR Injection**: Config injected as `window.__PUBLIC_CONFIG__` in root layout (zero latency)
 
-- `usePasswordManagement()` - Central password state & verification
-- `usePasswordProtection()` - Per-component password utilities
+**Usage patterns**:
 
-**UI/Form Hooks**:
+```typescript
+// Server Components (direct access)
+import { getPublicConfig } from "@/lib/public-config";
+const config = getPublicConfig();
+if (config.auth.enabled) {
+  /* ... */
+}
 
-- `useDirtyState()` - Unsaved changes tracking (ALWAYS use for forms/sheets)
-- `useShiftForm()` - Shift form state & preset application
-- `useDialogStates()` - Centralized dialog visibility state
-- `useViewSettings()` - View preferences with localStorage
+// Client Components (use hook)
+import { usePublicConfig } from "@/hooks/usePublicConfig";
+const { auth, oauth, oidc } = usePublicConfig();
+if (auth.enabled) {
+  /* ... */
+}
 
-**External Sync & SSE**:
+// Auth-specific helper hook
+import { useAuthFeatures } from "@/hooks/useAuthFeatures";
+const { isAuthEnabled, allowRegistration, allowGuest, providers } =
+  useAuthFeatures();
+```
 
-- `useExternalSync()` - iCal/webcal subscription management
-- `useSSEConnection()` - Real-time updates via Server-Sent Events
+**Environment variables** (no duplicates needed):
 
-#### Hook Usage Rules
+```bash
+# Auth config (automatically exposed to client)
+AUTH_ENABLED=true
+BETTER_AUTH_URL=http://localhost:3000
+ALLOW_USER_REGISTRATION=true
+ALLOW_GUEST_ACCESS=false
+```
 
-**DO:**
+**Key functions**:
 
-- ✅ ALWAYS use existing hooks for CRUD (never custom `fetch()` logic)
-- ✅ Use `getCachedPassword()` / `verifyAndCachePassword()` for password handling
-- ✅ Use `useDirtyState` for all forms/sheets with input
-- ✅ Pass `onPasswordRequired` callbacks to hooks that support it
+- `getPublicConfig()` - Server: Returns config object with all public values
+- `usePublicConfig()` - Client: Hook to access config in React components
+- `useAuthFeatures()` - Client: Convenience hook for auth-related flags
+- Feature flags in [`lib/auth/feature-flags.ts`](lib/auth/feature-flags.ts) are SERVER-ONLY now
 
-**DON'T:**
+### 5. Real-Time Updates (SSE)
 
-- ❌ NEVER implement custom `fetch()` calls for shifts/presets/notes/calendars
-- ❌ NEVER manually manage password state - use password hooks
-- ❌ NEVER implement custom dirty state tracking
+**Event stream**: [`app/api/events/stream/route.ts`](app/api/events/stream/route.ts) - Server-Sent Events endpoint
 
-**See `app/page.tsx` for complete hook integration pattern.**
+**Event emitter**: [`lib/event-emitter.ts`](lib/event-emitter.ts) - Singleton pattern with HMR support
 
-### Internationalization
+**Emit events after mutations**:
 
-next-intl setup: `messages/{de,en,it}.json` - cookie-based with browser detection fallback
+```typescript
+import { eventEmitter } from "@/lib/event-emitter";
+
+// After creating/updating/deleting
+eventEmitter.emit("calendar-change", {
+  type: "shift" | "preset" | "note" | "calendar" | "sync-log",
+  action: "create" | "update" | "delete" | "reorder",
+  calendarId: string,
+  data: unknown,
+});
+```
+
+**Client connection**: Use `useSSEConnection` hook in [`hooks/useSSEConnection.ts`](hooks/useSSEConnection.ts) - automatically reconnects, handles visibility changes, and triggers data refreshes.
+
+### 6. Component Architecture
+
+**Sheet pattern** (side panel): All forms use [`components/ui/base-sheet.tsx`](components/ui/base-sheet.tsx):
+
+- Unsaved changes confirmation via `useDirtyState` hook
+- Consistent header/footer styling with gradient backgrounds
+- Example: [`components/shift-sheet.tsx`](components/shift-sheet.tsx)
+
+**Dialog pattern**: Use [`components/ui/dialog.tsx`](components/ui/dialog.tsx) from shadcn/ui
+
+- List views, confirmations, and read-only displays
+- Example: [`components/shifts-overview-dialog.tsx`](components/shifts-overview-dialog.tsx)
+
+**Custom hooks pattern**:
+
+- Data fetching: `useShifts`, `usePresets`, `useNotes`, `useCalendars` (in `/hooks`)
+- Actions: `useShiftActions`, `useNoteActions` (handle CRUD + optimistic updates)
+- Forms: `useShiftForm`, `usePresetManagement` (form state + validation)
+
+### 7. Internationalization
+
+**Config**: [`lib/i18n.ts`](lib/i18n.ts) - Detects locale from cookie (`NEXT_LOCALE`) or `Accept-Language` header
 
 **Usage**:
 
 ```typescript
+import { useTranslations } from "next-intl";
+
 const t = useTranslations();
-t("shift.create"); // Feature-specific keys
-t("common.created", { item: t("shift.shift_one") }); // Parametrized
+t("shift.title"); // Returns translated string
+t("common.createError", { item: t("shift.title") }); // With interpolation
 ```
 
-**Key Structure** (centralized to avoid duplicates):
+**Message files**: [`messages/en.json`](messages/en.json), `de.json`, `it.json` - Nested JSON structure
 
-- `common.*` - CRUD operations with `{item}` parameter (`created`, `updated`, `deleted`, `createError`, `updateError`, `deleteError`)
-- `validation.*` - All validation messages (`passwordMatch`, `passwordIncorrect`, `urlInvalid`, etc.)
-- `form.*` - Reusable form labels (`nameLabel`, `colorLabel`, `passwordLabel`, `notesLabel`, `urlLabel`)
-- Feature namespaces - Specific keys (`shift.startTime`, `calendar.select`, etc.)
+### 8. External Calendar Sync
 
-**Rules**:
+**iCal parsing**: Uses `ical.js` library to parse `.ics` feeds
 
-- ALWAYS add new keys to all three language files (de.json, en.json, it.json)
-- German: ALWAYS use informal "du" form (never "Sie")
-- Check `common.*`, `validation.*`, `form.*` before creating new keys
+**Sync flow**:
 
-### Component Design Patterns
+1. User adds external sync URL + calendar mapping
+2. Manual/auto sync triggers [`app/api/external-syncs/[id]/sync/route.ts`](app/api/external-syncs/[id]/sync/route.ts)
+3. Shifts created with `syncedFromExternal: true`, `externalSyncId` set
+4. Sync logs stored in `syncLogs` table for error tracking
 
-#### Sheets
+**Read-only enforcement**: Synced shifts cannot be edited/deleted by users. Check `shift.syncedFromExternal` before allowing mutations.
 
-**Use `BaseSheet` for simple forms** (create, edit, settings):
+## Development Workflow
 
-```typescript
-<BaseSheet
-  open={open}
-  onOpenChange={onOpenChange}
-  title={t("sheet.title")}
-  showSaveButton
-  onSave={handleSave}
-  isSaving={isSaving}
-  saveDisabled={!isValid || !isDirty}
-  hasUnsavedChanges={isDirty}
-  maxWidth="md" // sm|md|lg|xl
->
-  {/* Form content */}
-</BaseSheet>
-```
+### Environment Setup
 
-**Custom sheets only for**: Multi-step wizards, complex layouts, custom footer actions
+**Required files**:
 
-**Styling**: Gradient headers (`from-primary/10 via-primary/5`), border opacity (`border-border/50`), consistent padding (`px-6 py-6`), sticky footer
+- `.env` - Copy from `.env.example` and configure
+- `sqlite.db` - Auto-created on first run
 
-**ALWAYS use `useDirtyState` hook** for unsaved changes tracking - see `preset-manage-sheet.tsx` for reference.
+**Critical env vars**:
 
-#### Other Patterns
+- `DATABASE_URL` - Default: `file:./sqlite.db`
+- `AUTH_ENABLED` - Enable/disable auth system (default: `true`)
+- `BETTER_AUTH_SECRET` - Required if auth enabled (generate with `npx @better-auth/cli secret`)
+- `BETTER_AUTH_URL` - Auth callback URL (e.g., `http://localhost:3000`)
 
-- **Dialogs**: Read-only info or confirmations only (no forms)
-- **Confirmation**: Use `ConfirmationDialog` component (NEVER native `confirm()`)
-- **Colors**: Use `ColorPicker` component (`components/ui/color-picker.tsx`) for all color selections - supports preset colors + custom picker
-- **Color Format**: `PRESET_COLORS` array, hex format, 20% opacity for backgrounds
-- **Dates**: `formatDateToLocal()` for YYYY-MM-DD
+**Note**: No `NEXT_PUBLIC_` prefixes needed - client values are automatically exposed via [`lib/public-config.ts`](lib/public-config.ts)
 
-### UI/UX Design Principles
-
-#### Live Updates via SSE
-
-All components must support real-time updates via Server-Sent Events:
-
-- Listen to relevant SSE events (shift, preset, note, sync-log updates)
-- Use silent refresh patterns: `fetchData(false)` to update without loading states
-- Implement refresh triggers: counter-based props (e.g., `syncLogRefreshTrigger`)
-- Avoid flashing/blinking during updates - update data smoothly without UI disruption
-
-#### Sheet Design Standards
-
-- **Simple Sheets**: Use `BaseSheet` component (handles styling, dirty state, buttons)
-- **Complex Sheets**: Follow custom pattern (see Component Design Patterns section)
-- **Key Requirements**:
-  - Gradient backgrounds for visual depth
-  - Consistent padding (`px-6`, `py-6`, `py-4`)
-  - Border styling with reduced opacity (`border-border/50`)
-  - Sticky footer with always-visible Save button
-  - Full-height layout: `flex flex-col` with `flex-1 overflow-y-auto`
-  - Gradient text for titles (`bg-gradient-to-r from-foreground to-foreground/70`)
-
-### Calendar Interactions
-
-- **Left-click**: Toggle shift with selected preset
-- **Right-click**: Open note dialog (prevent default context menu)
-- **Toggle logic**: Delete if exists, create if not
-- **Indicators**: `<StickyNote>` icon for days with notes
-
-## Docker & Production
-
-### Local Development
+### Running the App
 
 ```bash
-npm install
-npm run db:migrate  # One-time setup
-npm run dev         # http://localhost:3000
+npm install              # Install dependencies
+npm run dev             # Start dev server (localhost:3000)
+npm run build           # Production build
+npm run lint            # ESLint check
+npm run test            # Run lint + build (CI check)
 ```
 
 ### Docker Deployment
 
 ```bash
-cp docker-compose.override.yml.example docker-compose.override.yml
-docker-compose up -d --build
-docker compose exec bettershift npm run db:migrate
+docker-compose up -d --build    # Build and start container
 ```
 
-**Note**: Dockerfile uses `next/standalone` output. `drizzle.config.ts` must be in runner stage for migrations.
+Pre-built images: `ghcr.io/pantelx/bettershift:latest` (stable), `:dev` (bleeding edge)
 
-## Common Gotchas
+### Database Changes
 
-1. **Next.js 16**: Dynamic route params are async - always `await params`
-2. **SQLite Timestamps**: Use `{ mode: "timestamp" }`, stored as integers, auto-converted to Date
-3. **Cascade Deletes**: Deleting calendar removes all shifts/presets/notes
-4. **Sheets vs Dialogs**: Use BaseSheet for simple forms, custom sheets for complex layouts, Dialogs only for read-only info
-5. **Color Format**: Store hex (`#3b82f6`), use 20% opacity for backgrounds (`${color}20`)
-6. **Mobile UI**: Separate calendar selector with `showMobileCalendarDialog`
+1. Modify [`lib/db/schema.ts`](lib/db/schema.ts)
+2. Generate migration: `npm run db:generate`
+3. Review SQL in `drizzle/` folder
+4. Apply migration: `npm run db:migrate`
 
-## Adding New Features
+## Common Patterns
 
-### New Database Table
+### API Route Structure
 
-1. Add table definition to `lib/db/schema.ts` with relationships
-2. Export types: `export type TableName = typeof tableName.$inferSelect;`
-3. Run `npm run db:generate && npm run db:migrate`
-4. Create API routes: `app/api/tablename/route.ts` and `app/api/tablename/[id]/route.ts`
-5. Add translations to all language files (`messages/{de,en,it}.json`)
-6. Create custom hook in `hooks/` for CRUD operations (follow existing patterns)
+```typescript
+import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import { getSessionUser } from "@/lib/auth/sessions";
+import { checkPermission } from "@/lib/auth/permissions";
+import { eventEmitter } from "@/lib/event-emitter";
 
-## Development Workflow
+export async function POST(request: NextRequest) {
+  const user = await getSessionUser(request.headers);
+  const { calendarId, ...data } = await request.json();
 
-**Local Setup**:
+  // Check permissions
+  const canEdit = await checkPermission(user?.id, calendarId, "write");
+  if (!canEdit) {
+    return NextResponse.json(
+      { error: "Insufficient permissions" },
+      { status: 403 }
+    );
+  }
 
-```bash
-npm install
-npm run db:migrate  # One-time setup
-npm run dev         # http://localhost:3000
+  // Perform database operation
+  const [result] = await db
+    .insert(table)
+    .values({ ...data, calendarId })
+    .returning();
+
+  // Emit SSE event
+  eventEmitter.emit("calendar-change", {
+    type: "shift",
+    action: "create",
+    calendarId,
+    data: result,
+  });
+
+  return NextResponse.json(result, { status: 201 });
+}
 ```
 
-**Docker**:
+### Optimistic Updates
 
-```bash
-cp docker-compose.override.yml.example docker-compose.override.yml
-docker-compose up -d --build
-docker compose exec bettershift npm run db:migrate
-```
+See [`hooks/useShifts.ts`](hooks/useShifts.ts) `createShift` function:
 
-**Debugging**:
+1. Generate temp ID: `temp-${Date.now()}`
+2. Add optimistic item to state immediately
+3. Make API call
+4. On error: Remove temp item, show toast
+5. On success: Replace temp item with real data from API
 
-- Database GUI: `npm run db:studio`
-- Build check: `npm run build`
-- All API errors logged via `console.error()`
+### Date Handling
 
-## Code Style
+**Always use local dates** (no timezone conversions):
 
-- **Language**: English for all code, comments, variable names
-- **Comments**: Only for complex/non-obvious logic
-- **Code clarity**: Self-documenting names over comments
+- Store dates as `YYYY-MM-DD` strings in SQLite
+- Use `formatDateToLocal(date)` from [`lib/date-utils.ts`](lib/date-utils.ts) before saving
+- Display with `date-fns` + locale from `getDateLocale(locale)`
+
+## Migration Context
+
+**Status**: Auth system migration is **in progress**. See [`MIGRATION_PLAN.md`](MIGRATION_PLAN.md) for full details.
+
+**Backward compatibility**: All features work without auth enabled. Auth can be disabled by setting `AUTH_ENABLED=false`. When auth is off, all users have `owner` permission to all calendars.
+
+## Key Files Reference
+
+- [`app/page.tsx`](app/page.tsx) - Main calendar view (1300+ lines, complex state management)
+- [`lib/db/schema.ts`](lib/db/schema.ts) - Complete database schema (Better Auth + app tables)
+- [`lib/auth/permissions.ts`](lib/auth/permissions.ts) - Permission checks and calendar access logic
+- [`lib/auth/sessions.ts`](lib/auth/sessions.ts) - Session management & current user utilities (request context + Better Auth integration)
+- [`hooks/useSessions.ts`](hooks/useSessions.ts) - Client-side session management hook (uses Better Auth client)
+- [`lib/public-config.ts`](lib/public-config.ts) - Server-side public config definition (no NEXT*PUBLIC*\*)
+- [`hooks/usePublicConfig.ts`](hooks/usePublicConfig.ts) - Client-side config access hook
+- [`hooks/useAuthFeatures.ts`](hooks/useAuthFeatures.ts) - Auth-specific feature flags hook
+- [`components/calendar-grid.tsx`](components/calendar-grid.tsx) - Core calendar rendering with shift display
+- [`hooks/useSSEConnection.ts`](hooks/useSSEConnection.ts) - Real-time sync connection management
+- [`MIGRATION_PLAN.md`](MIGRATION_PLAN.md) - Detailed auth migration plan with phases and todos
+
+## Important Notes
+
+- **No NEXT*PUBLIC***: Use `getPublicConfig()` on server, `usePublicConfig()` hook on client - never `process.env.NEXT_PUBLIC_*`
+- **Better Auth first**: Always check [Better Auth docs](https://www.better-auth.com/docs) before implementing auth features - use built-in methods, don't reinvent
+- **SSE is required**: All mutations must emit events to keep clients in sync
+- **Permission checks everywhere**: Check permissions in both API routes (server) and UI (client) for security + UX
+- **Strict TypeScript**: No `any` types, use Drizzle-inferred types from schema
+- **Translations required**: All user-facing strings must use `t()` function
+- **Guest mode**: When auth enabled, respect `guestPermission` on calendars for unauthenticated access

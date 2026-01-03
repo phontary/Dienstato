@@ -1,6 +1,5 @@
 import { CalendarSheet } from "@/components/calendar-sheet";
 import { ShiftSheet, ShiftFormData } from "@/components/shift-sheet";
-import { PasswordDialog } from "@/components/password-dialog";
 import { CalendarSettingsSheet } from "@/components/calendar-settings-sheet";
 import { ExternalSyncManageSheet } from "@/components/external-sync-manage-sheet";
 import { SyncNotificationDialog } from "@/components/sync-notification-dialog";
@@ -15,11 +14,7 @@ interface DialogManagerProps {
   // Calendar Dialog
   showCalendarDialog: boolean;
   onCalendarDialogChange: (open: boolean) => void;
-  onCreateCalendar: (
-    name: string,
-    color: string,
-    password?: string
-  ) => Promise<void>;
+  onCreateCalendar: (name: string, color: string) => Promise<void>;
 
   // Shift Dialog
   showShiftDialog: boolean;
@@ -28,18 +23,14 @@ interface DialogManagerProps {
   selectedDate?: Date;
   selectedCalendar: string | null;
   onPresetsChange: () => void;
-
-  // Password Dialog
-  showPasswordDialog: boolean;
-  onPasswordDialogChange: (open: boolean) => void;
   calendars: CalendarWithCount[];
-  onPasswordSuccess: (password: string) => void;
 
   // Calendar Settings Dialog
   showCalendarSettingsDialog: boolean;
   onCalendarSettingsDialogChange: (open: boolean) => void;
   onCalendarSettingsSuccess: () => void;
-  onDeleteCalendar: (password?: string) => void;
+  onDeleteCalendar: () => void;
+  onExternalSyncFromSettings?: () => void;
 
   // External Sync Sheet
   showExternalSyncDialog: boolean;
@@ -139,17 +130,6 @@ export function DialogManager(props: DialogManagerProps) {
 
       {props.selectedCalendar && (
         <>
-          <PasswordDialog
-            open={props.showPasswordDialog}
-            onOpenChange={props.onPasswordDialogChange}
-            calendarId={props.selectedCalendar}
-            calendarName={
-              props.calendars.find((c) => c.id === props.selectedCalendar)
-                ?.name || ""
-            }
-            onSuccess={props.onPasswordSuccess}
-          />
-
           <CalendarSettingsSheet
             key={`settings-${props.selectedCalendar}-${props.showCalendarSettingsDialog}`}
             open={props.showCalendarSettingsDialog}
@@ -163,16 +143,13 @@ export function DialogManager(props: DialogManagerProps) {
               props.calendars.find((c) => c.id === props.selectedCalendar)
                 ?.color || "#3b82f6"
             }
-            hasPassword={
-              !!props.calendars.find((c) => c.id === props.selectedCalendar)
-                ?.passwordHash
-            }
-            isLocked={
+            calendarGuestPermission={
               props.calendars.find((c) => c.id === props.selectedCalendar)
-                ?.isLocked || false
+                ?.guestPermission || "none"
             }
             onSuccess={props.onCalendarSettingsSuccess}
             onDelete={props.onDeleteCalendar}
+            onExternalSync={props.onExternalSyncFromSettings}
           />
 
           <ExternalSyncManageSheet
@@ -263,6 +240,7 @@ export function DialogManager(props: DialogManagerProps) {
           onEditNote={props.onEditNoteFromList}
           onDeleteNote={props.onDeleteNoteFromList}
           onAddNew={props.onAddNewNote}
+          calendarId={props.selectedCalendar || undefined}
         />
       )}
       <NoteSheet
@@ -272,6 +250,7 @@ export function DialogManager(props: DialogManagerProps) {
         onDelete={props.onNoteDelete}
         selectedDate={props.selectedNoteDate}
         note={props.selectedNote}
+        calendarId={props.selectedCalendar || undefined}
       />
     </>
   );

@@ -1,18 +1,33 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { calendars, shifts } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
-import { hashPassword, verifyPassword } from "@/lib/password-utils";
+import {
+  calendars,
+  shifts,
+  shiftPresets,
+  calendarNotes,
+} from "@/lib/db/schema";
+import { eq, sql } from "drizzle-orm";
+import { getSessionUser } from "@/lib/auth/sessions";
+import {
+  canViewCalendar,
+  canManageCalendar,
+  canDeleteCalendar,
+} from "@/lib/auth/permissions";
+import {
+  logUserAction,
+  type CalendarUpdatedMetadata,
+  type CalendarDeletedMetadata,
+  type CalendarGuestPermissionChangedMetadata,
+} from "@/lib/audit-log";
 
 // GET single calendar
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
-    const { searchParams } = new URL(request.url);
-    const password = searchParams.get("password");
+    const user = await getSessionUser(request.headers);
 
     const [calendar] = await db
       .select()
@@ -26,14 +41,13 @@ export async function GET(
       );
     }
 
-    // Verify password if calendar is protected AND locked
-    if (calendar.passwordHash && calendar.isLocked) {
-      if (!password || !verifyPassword(password, calendar.passwordHash)) {
-        return NextResponse.json(
-          { error: "Invalid password" },
-          { status: 401 }
-        );
-      }
+    // Check read permission (works for both authenticated users and guests)
+    const hasAccess = await canViewCalendar(user?.id, id);
+    if (!hasAccess) {
+      return NextResponse.json(
+        { error: "Insufficient permissions" },
+        { status: 403 }
+      );
     }
 
     const calendarShifts = await db
@@ -52,17 +66,18 @@ export async function GET(
   }
 }
 
-// PATCH update calendar
+// PATCH update calendar (requires admin permission)
 export async function PATCH(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
+    const user = await getSessionUser(request.headers);
     const body = await request.json();
-    const { name, color, password, currentPassword, isLocked } = body;
+    const { name, color, guestPermission } = body;
 
-    // Fetch current calendar to check password
+    // Fetch current calendar
     const [existingCalendar] = await db
       .select()
       .from(calendars)
@@ -75,38 +90,39 @@ export async function PATCH(
       );
     }
 
-    // Always verify password if calendar is protected
-    if (existingCalendar.passwordHash) {
-      if (
-        !currentPassword ||
-        !verifyPassword(currentPassword, existingCalendar.passwordHash)
-      ) {
-        return NextResponse.json(
-          { error: "Invalid password" },
-          { status: 401 }
-        );
-      }
+    // Check admin permission (works for both authenticated users and guests)
+    const hasAccess = await canManageCalendar(user?.id, id);
+    if (!hasAccess) {
+      return NextResponse.json(
+        { error: "Insufficient permissions. Admin access required." },
+        { status: 403 }
+      );
     }
 
     const updateData: Partial<typeof calendars.$inferInsert> = {};
-    if (name) updateData.name = name;
-    if (color) updateData.color = color;
-    if (password !== undefined) {
-      updateData.passwordHash = password ? hashPassword(password) : null;
-      // If removing password, also unlock calendar
-      if (password === null) {
-        updateData.isLocked = false;
-      }
+    const changes: string[] = [];
+    let guestPermissionChanged = false;
+    let oldGuestPermission: string | undefined;
+
+    if (name && name !== existingCalendar.name) {
+      updateData.name = name;
+      changes.push("name");
     }
-    if (isLocked !== undefined) {
-      // Only allow locking if password exists or is being set
-      if (isLocked && !existingCalendar.passwordHash && !password) {
-        return NextResponse.json(
-          { error: "Cannot lock calendar without password" },
-          { status: 400 }
-        );
+    if (color && color !== existingCalendar.color) {
+      updateData.color = color;
+      changes.push("color");
+    }
+    if (
+      guestPermission !== undefined &&
+      guestPermission !== existingCalendar.guestPermission
+    ) {
+      // Validate guest permission value
+      if (["none", "read", "write"].includes(guestPermission)) {
+        updateData.guestPermission = guestPermission;
+        changes.push("guestPermission");
+        guestPermissionChanged = true;
+        oldGuestPermission = existingCalendar.guestPermission;
       }
-      updateData.isLocked = isLocked;
     }
 
     const [calendar] = await db
@@ -114,6 +130,43 @@ export async function PATCH(
       .set(updateData)
       .where(eq(calendars.id, id))
       .returning();
+
+    // Log calendar update event if there were actual changes
+    if (user && changes.length > 0) {
+      await logUserAction<CalendarUpdatedMetadata>({
+        action: "calendar.updated",
+        userId: user.id,
+        resourceType: "calendar",
+        resourceId: calendar.id,
+        metadata: {
+          calendarName: calendar.name,
+          changes,
+        },
+        request,
+      });
+
+      // Log separate event for guest permission changes
+      if (guestPermissionChanged) {
+        await logUserAction<CalendarGuestPermissionChangedMetadata>({
+          action: "calendar.guest_permission.changed",
+          userId: user.id,
+          resourceType: "calendar",
+          resourceId: calendar.id,
+          metadata: {
+            calendarName: calendar.name,
+            oldPermission: (oldGuestPermission || "none") as
+              | "none"
+              | "read"
+              | "write",
+            newPermission: calendar.guestPermission as
+              | "none"
+              | "read"
+              | "write",
+          },
+          request,
+        });
+      }
+    }
 
     return NextResponse.json(calendar);
   } catch (error) {
@@ -125,28 +178,16 @@ export async function PATCH(
   }
 }
 
-// DELETE calendar
+// DELETE calendar (requires owner permission)
 export async function DELETE(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
+    const user = await getSessionUser(request.headers);
 
-    // Read password from request body
-    let password: string | null = null;
-    const contentType = request.headers.get("content-type");
-
-    if (contentType?.includes("application/json")) {
-      try {
-        const body = await request.json();
-        password = body.password || null;
-      } catch {
-        // If body parsing fails, continue with null password
-      }
-    }
-
-    // Fetch calendar to check password
+    // Fetch calendar
     const [calendar] = await db
       .select()
       .from(calendars)
@@ -159,17 +200,44 @@ export async function DELETE(
       );
     }
 
-    // Verify password if calendar is protected
-    if (calendar.passwordHash) {
-      if (!password || !verifyPassword(password, calendar.passwordHash)) {
-        return NextResponse.json(
-          { error: "Invalid password" },
-          { status: 401 }
-        );
-      }
+    // Check owner permission (works for both authenticated users and guests)
+    const hasAccess = await canDeleteCalendar(user?.id, id);
+    if (!hasAccess) {
+      return NextResponse.json(
+        { error: "Insufficient permissions. Owner access required." },
+        { status: 403 }
+      );
     }
 
+    // Count related records before deletion
+    const [{ shiftsCount, presetsCount, notesCount }] = await db
+      .select({
+        shiftsCount: sql<number>`(SELECT COUNT(*) FROM ${shifts} WHERE ${shifts.calendarId} = ${calendar.id})`,
+        presetsCount: sql<number>`(SELECT COUNT(*) FROM ${shiftPresets} WHERE ${shiftPresets.calendarId} = ${calendar.id})`,
+        notesCount: sql<number>`(SELECT COUNT(*) FROM ${calendarNotes} WHERE ${calendarNotes.calendarId} = ${calendar.id})`,
+      })
+      .from(calendars)
+      .where(eq(calendars.id, id));
+
+    // Delete calendar (cascade will delete related records)
     await db.delete(calendars).where(eq(calendars.id, id));
+
+    // Log calendar deletion event
+    if (user) {
+      await logUserAction<CalendarDeletedMetadata>({
+        action: "calendar.deleted",
+        userId: user.id,
+        resourceType: "calendar",
+        resourceId: calendar.id,
+        metadata: {
+          calendarName: calendar.name,
+          shiftsDeleted: shiftsCount,
+          presetsDeleted: presetsCount,
+          notesDeleted: notesCount,
+        },
+        request,
+      });
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

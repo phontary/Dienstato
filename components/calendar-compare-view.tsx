@@ -6,13 +6,12 @@ import { CalendarNote, ExternalSync, ShiftPreset } from "@/lib/db/schema";
 import { Button } from "@/components/ui/button";
 import { CalendarContent } from "@/components/calendar-content";
 import { PresetSelector } from "@/components/preset-selector";
-import { LockedCalendarView } from "@/components/locked-calendar-view";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { X, Link, Smartphone } from "lucide-react";
-import { getCachedPassword } from "@/lib/password-cache";
 import { motion } from "motion/react";
 import { Locale } from "date-fns";
 import { toast } from "sonner";
+import { useCalendarPermission } from "@/hooks/useCalendarPermission";
 
 interface CalendarCompareViewProps {
   calendars: CalendarWithCount[];
@@ -69,9 +68,7 @@ interface CalendarCompareViewProps {
   onPresetsChange: (calendarId: string) => void;
   onShiftsChange?: () => void;
   onStatsRefresh?: () => void;
-  onPasswordRequired: (calendarId: string, action: () => Promise<void>) => void;
   presetsLoadingMap?: Map<string, boolean>;
-  onUnlockCalendar?: (calendarId: string) => void;
 }
 
 export function CalendarCompareView(props: CalendarCompareViewProps) {
@@ -80,6 +77,24 @@ export function CalendarCompareView(props: CalendarCompareViewProps) {
   const selectedCalendars = props.calendars.filter((cal) =>
     props.selectedIds.includes(cal.id)
   );
+
+  // Pre-calculate permissions for all selected calendars
+  // We need to call hooks unconditionally, so we always get permissions for all selected calendars
+  const permission0 = useCalendarPermission(selectedCalendars[0]?.id);
+  const permission1 = useCalendarPermission(selectedCalendars[1]?.id);
+  const permission2 = useCalendarPermission(selectedCalendars[2]?.id);
+
+  // Map permissions by calendar ID
+  const permissionsMap = new Map<
+    string,
+    ReturnType<typeof useCalendarPermission>
+  >();
+  if (selectedCalendars[0])
+    permissionsMap.set(selectedCalendars[0].id, permission0);
+  if (selectedCalendars[1])
+    permissionsMap.set(selectedCalendars[1].id, permission1);
+  if (selectedCalendars[2])
+    permissionsMap.set(selectedCalendars[2].id, permission2);
 
   // Find which calendar owns the selected preset
   const selectedPresetCalendarId = props.selectedPresetId
@@ -100,7 +115,7 @@ export function CalendarCompareView(props: CalendarCompareViewProps) {
     navigator.clipboard
       .writeText(url.toString())
       .then(() => {
-        toast.success(t("calendar.linkCopied"));
+        toast.success(t("common.copied", { item: t("calendar.compareMode") }));
       })
       .catch(() => {
         toast.error(t("common.error"));
@@ -182,10 +197,8 @@ export function CalendarCompareView(props: CalendarCompareViewProps) {
             const presetsLoading =
               props.presetsLoadingMap?.get(calendar.id) || false;
 
-            // Check if calendar is locked (has password but no cached password)
-            const isLocked = calendar.passwordHash && calendar.isLocked;
-            const hasPassword = getCachedPassword(calendar.id);
-            const showLockedView = isLocked && !hasPassword;
+            // Get pre-calculated permission for this calendar
+            const permission = permissionsMap.get(calendar.id)!;
 
             // Check if this calendar is disabled (preset from different calendar selected)
             const isDisabled =
@@ -220,119 +233,92 @@ export function CalendarCompareView(props: CalendarCompareViewProps) {
                   </div>
 
                   {/* Preset List for this calendar */}
-                  {!showLockedView && (
-                    <div className="-mx-2">
-                      <PresetSelector
-                        calendars={props.allCalendars}
-                        presets={calendarPresets}
-                        selectedPresetId={props.selectedPresetId}
-                        onSelectPreset={props.onSelectPreset}
-                        onPresetsChange={() =>
-                          props.onPresetsChange(calendar.id)
-                        }
-                        onShiftsChange={props.onShiftsChange}
-                        onStatsRefresh={props.onStatsRefresh}
-                        calendarId={calendar.id}
-                        onPasswordRequired={(action) =>
-                          props.onPasswordRequired(calendar.id, action)
-                        }
-                        onViewSettingsClick={props.onViewSettingsClick}
-                        loading={presetsLoading}
-                        hidePresetHeader={props.hidePresetHeader}
-                        onHidePresetHeaderChange={
-                          props.onHidePresetHeaderChange
-                        }
-                        hideManageButton={true}
-                      />
-                    </div>
-                  )}
+                  <div className="-mx-2">
+                    <PresetSelector
+                      calendars={props.allCalendars}
+                      presets={calendarPresets}
+                      selectedPresetId={props.selectedPresetId}
+                      onSelectPreset={props.onSelectPreset}
+                      onPresetsChange={() => props.onPresetsChange(calendar.id)}
+                      onShiftsChange={props.onShiftsChange}
+                      onStatsRefresh={props.onStatsRefresh}
+                      calendarId={calendar.id}
+                      onViewSettingsClick={props.onViewSettingsClick}
+                      loading={presetsLoading}
+                      hidePresetHeader={props.hidePresetHeader}
+                      onHidePresetHeaderChange={props.onHidePresetHeaderChange}
+                      hideManageButton={true}
+                    />
+                  </div>
                 </div>
 
-                {/* Calendar Content or Locked View */}
+                {/* Calendar Content */}
                 <div className="p-2 sm:p-3">
-                  {showLockedView ? (
-                    <LockedCalendarView
-                      calendarId={calendar.id}
-                      onUnlock={() => {
-                        if (props.onUnlockCalendar) {
-                          props.onUnlockCalendar(calendar.id);
-                        }
-                      }}
-                    />
-                  ) : (
-                    <>
-                      {/* Hint when preset from different calendar is selected */}
-                      {isDisabled && (
-                        <div className="mb-3 p-3 bg-muted/50 border border-border/50 rounded-lg">
-                          <p className="text-xs text-muted-foreground text-center">
-                            {t("preset.cannotAddPresetHint")}
-                          </p>
-                        </div>
-                      )}
-                      <CalendarContent
-                        calendarDays={props.calendarDays}
-                        currentDate={props.currentDate}
-                        onDateChange={props.onDateChange}
-                        shifts={shifts}
-                        notes={notes}
-                        selectedPresetId={
-                          isDisabled ? undefined : props.selectedPresetId
-                        }
-                        togglingDates={togglingDates}
-                        externalSyncs={externalSyncs}
-                        maxShiftsToShow={props.maxShiftsToShow}
-                        maxExternalShiftsToShow={props.maxExternalShiftsToShow}
-                        showShiftNotes={props.showShiftNotes}
-                        showFullTitles={props.showFullTitles}
-                        shiftSortType={props.shiftSortType}
-                        shiftSortOrder={props.shiftSortOrder}
-                        combinedSortMode={props.combinedSortMode}
-                        highlightedWeekdays={props.highlightedWeekdays}
-                        highlightColor={props.highlightColor}
-                        selectedCalendar={calendar.id}
-                        statsRefreshTrigger={props.statsRefreshTrigger}
-                        shouldHideUIElements={false}
-                        locale={props.locale}
-                        onDayClick={
-                          isDisabled
-                            ? () => {}
-                            : (date) => props.onDayClick(calendar.id, date)
-                        }
-                        onDayRightClick={
-                          props.onDayRightClick
-                            ? (e, date) =>
-                                props.onDayRightClick!(calendar.id, e, date)
-                            : undefined
-                        }
-                        onNoteIconClick={
-                          props.onNoteIconClick
-                            ? (e, date) =>
-                                props.onNoteIconClick!(calendar.id, e, date)
-                            : undefined
-                        }
-                        onLongPress={
-                          props.onLongPress
-                            ? (date) => props.onLongPress!(calendar.id, date)
-                            : undefined
-                        }
-                        onShowAllShifts={(date, dayShifts) =>
-                          props.onShowAllShifts(calendar.id, date, dayShifts)
-                        }
-                        onShowSyncedShifts={(date, syncedShifts) =>
-                          props.onShowSyncedShifts(
-                            calendar.id,
-                            date,
-                            syncedShifts
-                          )
-                        }
-                        onDeleteShift={
-                          props.onDeleteShift
-                            ? (id) => props.onDeleteShift!(calendar.id, id)
-                            : undefined
-                        }
-                      />
-                    </>
+                  {/* Hint when preset from different calendar is selected */}
+                  {isDisabled && (
+                    <div className="mb-3 p-3 bg-muted/50 border border-border/50 rounded-lg">
+                      <p className="text-xs text-muted-foreground text-center">
+                        {t("preset.cannotAddPresetHint")}
+                      </p>
+                    </div>
                   )}
+                  <CalendarContent
+                    calendarDays={props.calendarDays}
+                    currentDate={props.currentDate}
+                    onDateChange={props.onDateChange}
+                    shifts={shifts}
+                    notes={notes}
+                    selectedPresetId={
+                      isDisabled ? undefined : props.selectedPresetId
+                    }
+                    togglingDates={togglingDates}
+                    externalSyncs={externalSyncs}
+                    maxShiftsToShow={props.maxShiftsToShow}
+                    maxExternalShiftsToShow={props.maxExternalShiftsToShow}
+                    showShiftNotes={props.showShiftNotes}
+                    showFullTitles={props.showFullTitles}
+                    shiftSortType={props.shiftSortType}
+                    shiftSortOrder={props.shiftSortOrder}
+                    combinedSortMode={props.combinedSortMode}
+                    highlightedWeekdays={props.highlightedWeekdays}
+                    highlightColor={props.highlightColor}
+                    selectedCalendar={calendar.id}
+                    statsRefreshTrigger={props.statsRefreshTrigger}
+                    locale={props.locale}
+                    onDayClick={
+                      isDisabled
+                        ? () => {}
+                        : (date) => props.onDayClick(calendar.id, date)
+                    }
+                    onDayRightClick={
+                      props.onDayRightClick && permission.canEdit
+                        ? (e, date) =>
+                            props.onDayRightClick!(calendar.id, e, date)
+                        : undefined
+                    }
+                    onNoteIconClick={
+                      props.onNoteIconClick && permission.canEdit
+                        ? (e, date) =>
+                            props.onNoteIconClick!(calendar.id, e, date)
+                        : undefined
+                    }
+                    onLongPress={
+                      props.onLongPress && permission.canEdit
+                        ? (date) => props.onLongPress!(calendar.id, date)
+                        : undefined
+                    }
+                    onShowAllShifts={(date, dayShifts) =>
+                      props.onShowAllShifts(calendar.id, date, dayShifts)
+                    }
+                    onShowSyncedShifts={(date, syncedShifts) =>
+                      props.onShowSyncedShifts(calendar.id, date, syncedShifts)
+                    }
+                    onDeleteShift={
+                      props.onDeleteShift && permission.canEdit
+                        ? (id) => props.onDeleteShift!(calendar.id, id)
+                        : undefined
+                    }
+                  />
                 </div>
               </motion.div>
             );

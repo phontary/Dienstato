@@ -7,7 +7,8 @@ import {
   calendars,
 } from "@/lib/db/schema";
 import { eq, and, gte, lte, or, isNull } from "drizzle-orm";
-import { verifyPassword } from "@/lib/password-utils";
+import { getSessionUser } from "@/lib/auth/sessions";
+import { canViewCalendar } from "@/lib/auth/permissions";
 import { calculateShiftDuration } from "@/lib/date-utils";
 import {
   startOfWeek,
@@ -33,9 +34,9 @@ export async function GET(request: Request) {
       );
     }
 
-    const password = searchParams.get("password");
+    const user = await getSessionUser(request.headers);
 
-    // Fetch calendar to check password
+    // Fetch calendar
     const [calendar] = await db
       .select()
       .from(calendars)
@@ -48,14 +49,13 @@ export async function GET(request: Request) {
       );
     }
 
-    // Verify password if calendar is protected AND locked
-    if (calendar.passwordHash && calendar.isLocked) {
-      if (!password || !verifyPassword(password, calendar.passwordHash)) {
-        return NextResponse.json(
-          { error: "Invalid password" },
-          { status: 401 }
-        );
-      }
+    // Check read permission (works for both authenticated users and guests)
+    const hasAccess = await canViewCalendar(user?.id, calendarId);
+    if (!hasAccess) {
+      return NextResponse.json(
+        { error: "Insufficient permissions" },
+        { status: 403 }
+      );
     }
 
     const referenceDate = date ? new Date(date) : new Date();

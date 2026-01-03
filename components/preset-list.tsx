@@ -13,8 +13,7 @@ import {
 
 import { ShiftPreset } from "@/lib/db/schema";
 import { CalendarWithCount } from "@/lib/types";
-import { getCachedPassword } from "@/lib/password-cache";
-import { PresetListSkeleton } from "@/components/preset-list-skeleton";
+import { useCalendarPermission } from "@/hooks/useCalendarPermission";
 
 interface PresetListProps {
   calendars: CalendarWithCount[];
@@ -25,99 +24,34 @@ interface PresetListProps {
   onCreateNew?: () => void;
   onManageClick?: () => void;
   onViewSettingsClick?: () => void;
-  onUnlock?: () => void;
-  loading?: boolean;
   hidePresetHeader?: boolean;
   onHidePresetHeaderChange?: (hide: boolean) => void;
   hideManageButton?: boolean;
 }
 
 export function PresetList({
-  calendars,
   calendarId,
   presets,
   selectedPresetId,
   onSelectPreset,
   onManageClick,
   onViewSettingsClick,
-  onUnlock,
-  loading = false,
   hidePresetHeader = false,
   onHidePresetHeaderChange,
   hideManageButton = false,
 }: PresetListProps) {
   const t = useTranslations();
+  const permission = useCalendarPermission(calendarId);
   const [showSecondary, setShowSecondary] = React.useState(false);
 
   const primaryPresets = presets.filter((p) => !p.isSecondary);
   const secondaryPresets = presets.filter((p) => p.isSecondary);
 
-  // Hide preset buttons if calendar requires password AND no valid password is cached
-  const selectedCalendar = calendars.find((c) => c.id === calendarId);
-  const requiresPassword = !!selectedCalendar?.passwordHash;
-  const hasPassword = calendarId ? !!getCachedPassword(calendarId) : false;
-  const isLocked = selectedCalendar?.isLocked === true;
-  const shouldHidePresetButtons = requiresPassword && !hasPassword;
-  const shouldShowUnlockHint = shouldHidePresetButtons && !isLocked;
+  // Check if current calendar is read-only
+  const isReadOnly = !permission.canEdit;
 
-  // Show loading state while fetching
-  if (loading) {
-    return <PresetListSkeleton hidePresetHeader={hidePresetHeader} />;
-  }
-
-  // Show unlock hint if calendar requires password and no password is cached (but not locked)
-  if (shouldShowUnlockHint) {
-    return (
-      <div className="border-2 border-dashed border-primary/30 rounded-lg p-4 sm:p-6 text-center space-y-3">
-        <div className="flex items-center justify-center gap-2 text-primary">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-5 w-5"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
-            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-          </svg>
-          <p className="text-sm font-semibold">
-            {t("password.unlockRequired")}
-          </p>
-        </div>
-        <p className="text-xs sm:text-sm text-muted-foreground max-w-md mx-auto leading-relaxed">
-          {t("password.unlockRequiredDescription")}
-        </p>
-        {onUnlock && (
-          <Button onClick={onUnlock} size="sm" className="gap-2">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-4 w-4"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
-              <path d="M7 11V7a5 5 0 0 1 9.9-1" />
-            </svg>
-            <span className="text-xs sm:text-sm">
-              {t("password.unlockCalendar")}
-            </span>
-          </Button>
-        )}
-      </div>
-    );
-  }
-
-  // Hide everything if calendar requires password but no password is cached (regardless of unlock hint)
-  if (shouldHidePresetButtons) {
-    return null;
-  }
+  // Presets are now loaded at page level - no skeleton needed here
+  // If loading is true, parent should show FullscreenLoader
 
   if (presets.length === 0) {
     return (
@@ -163,6 +97,7 @@ export function PresetList({
                   selectedPresetId === preset.id ? undefined : preset.id
                 )
               }
+              isReadOnly={isReadOnly}
             />
           ))}
         </div>
@@ -199,6 +134,7 @@ export function PresetList({
                     )
                   }
                   compact
+                  isReadOnly={isReadOnly}
                 />
               ))}
             </div>
@@ -261,6 +197,7 @@ interface PresetButtonProps {
   isSelected: boolean;
   onSelect: () => void;
   compact?: boolean;
+  isReadOnly?: boolean;
 }
 
 function PresetButton({
@@ -268,6 +205,7 @@ function PresetButton({
   isSelected,
   onSelect,
   compact,
+  isReadOnly = false,
 }: PresetButtonProps) {
   const t = useTranslations();
 
@@ -276,7 +214,8 @@ function PresetButton({
       <Button
         variant={isSelected ? "default" : "outline"}
         size="sm"
-        onClick={onSelect}
+        onClick={isReadOnly ? undefined : onSelect}
+        disabled={isReadOnly}
         className="relative text-xs sm:text-sm px-2 sm:px-3 h-8 sm:h-9"
         style={{
           backgroundColor: isSelected ? preset.color : undefined,
@@ -312,7 +251,8 @@ function PresetButton({
       <Button
         variant={isSelected ? "default" : "outline"}
         size="sm"
-        onClick={onSelect}
+        onClick={isReadOnly ? undefined : onSelect}
+        disabled={isReadOnly}
         className="relative text-[11px] sm:text-sm px-2 sm:px-4 h-8 sm:h-10 rounded-full font-semibold transition-all"
         style={{
           backgroundColor: isSelected ? preset.color : undefined,

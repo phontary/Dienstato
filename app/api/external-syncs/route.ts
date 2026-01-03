@@ -1,17 +1,19 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { externalSyncs, calendars } from "@/lib/db/schema";
 import { eq, desc } from "drizzle-orm";
-import { verifyPassword } from "@/lib/password-utils";
+import { getSessionUser } from "@/lib/auth/sessions";
+import { canViewCalendar, canEditCalendar } from "@/lib/auth/permissions";
 import {
   isValidCalendarUrl,
   detectCalendarSyncType,
   isValidICSContent,
   type CalendarSyncType,
 } from "@/lib/external-calendar-utils";
+import { logUserAction, type SyncCreatedMetadata } from "@/lib/audit-log";
 
 // GET all external syncs for a calendar
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const calendarId = searchParams.get("calendarId");
@@ -23,9 +25,7 @@ export async function GET(request: Request) {
       );
     }
 
-    const password = searchParams.get("password");
-
-    // Fetch calendar to check password
+    // Fetch calendar to verify it exists
     const [calendar] = await db
       .select()
       .from(calendars)
@@ -38,14 +38,14 @@ export async function GET(request: Request) {
       );
     }
 
-    // Verify password if calendar is protected AND locked
-    if (calendar.passwordHash && calendar.isLocked) {
-      if (!password || !verifyPassword(password, calendar.passwordHash)) {
-        return NextResponse.json(
-          { error: "Invalid password" },
-          { status: 401 }
-        );
-      }
+    // Check view permissions (works for both authenticated users and guests)
+    const user = await getSessionUser(request.headers);
+    const hasAccess = await canViewCalendar(user?.id, calendarId);
+    if (!hasAccess) {
+      return NextResponse.json(
+        { error: "Insufficient permissions. Read access required." },
+        { status: 403 }
+      );
     }
 
     const syncs = await db
@@ -65,7 +65,7 @@ export async function GET(request: Request) {
 }
 
 // POST create new external sync
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const {
@@ -89,7 +89,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // Fetch calendar to check password
+    // Fetch calendar to verify it exists
     const [calendar] = await db
       .select()
       .from(calendars)
@@ -102,15 +102,14 @@ export async function POST(request: Request) {
       );
     }
 
-    // Verify password if calendar is protected
-    if (calendar.passwordHash) {
-      const { password } = body;
-      if (!password || !verifyPassword(password, calendar.passwordHash)) {
-        return NextResponse.json(
-          { error: "Invalid password" },
-          { status: 401 }
-        );
-      }
+    // Check edit permissions (works for both authenticated users and guests)
+    const user = await getSessionUser(request.headers);
+    const hasAccess = await canEditCalendar(user?.id, calendarId);
+    if (!hasAccess) {
+      return NextResponse.json(
+        { error: "Insufficient permissions. Write access required." },
+        { status: 403 }
+      );
     }
 
     let finalCalendarUrl;
@@ -197,6 +196,22 @@ export async function POST(request: Request) {
         updatedAt: new Date(),
       })
       .returning();
+
+    // Log external sync creation event
+    if (user) {
+      await logUserAction<SyncCreatedMetadata>({
+        action: "sync.created",
+        userId: user.id,
+        resourceType: "sync",
+        resourceId: externalSync.id,
+        metadata: {
+          calendarName: calendar.name,
+          syncUrl: isOneTimeImport ? "file-upload" : finalCalendarUrl,
+          syncName: externalSync.name,
+        },
+        request,
+      });
+    }
 
     return NextResponse.json(externalSync, { status: 201 });
   } catch (error) {

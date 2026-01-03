@@ -5,7 +5,6 @@ import { CalendarWithCount } from "@/lib/types";
 import { useState } from "react";
 import { PresetList } from "@/components/preset-list";
 import { PresetManageSheet } from "@/components/preset-manage-sheet";
-import { usePasswordProtection } from "@/hooks/usePasswordProtection";
 
 interface PresetSelectorProps {
   calendars: CalendarWithCount[];
@@ -16,7 +15,6 @@ interface PresetSelectorProps {
   onShiftsChange?: () => void;
   onStatsRefresh?: () => void;
   calendarId: string;
-  onPasswordRequired: (action: () => Promise<void>) => void;
   onViewSettingsClick?: () => void;
   loading?: boolean;
   hidePresetHeader?: boolean;
@@ -33,24 +31,15 @@ export function PresetSelector({
   onShiftsChange,
   onStatsRefresh,
   calendarId,
-  onPasswordRequired,
   onViewSettingsClick,
-  loading = false,
   hidePresetHeader = false,
   onHidePresetHeaderChange,
   hideManageButton = false,
 }: PresetSelectorProps) {
   const [showManageDialog, setShowManageDialog] = useState(false);
 
-  const { withPasswordCheck } = usePasswordProtection({
-    calendarId,
-    onPasswordRequired,
-  });
-
-  const handleManageClick = async () => {
-    await withPasswordCheck(async () => {
-      setShowManageDialog(true);
-    });
+  const handleManageClick = () => {
+    setShowManageDialog(true);
   };
 
   const handlePresetsChange = () => {
@@ -70,8 +59,6 @@ export function PresetSelector({
         onCreateNew={handleManageClick}
         onManageClick={handleManageClick}
         onViewSettingsClick={onViewSettingsClick}
-        onUnlock={() => onPasswordRequired(async () => {})}
-        loading={loading}
         hidePresetHeader={hidePresetHeader}
         onHidePresetHeaderChange={onHidePresetHeaderChange}
         hideManageButton={hideManageButton}

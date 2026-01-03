@@ -18,9 +18,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  isRateLimitError,
+  handleRateLimitError,
+} from "@/lib/rate-limit-client";
 import { Download, FileText, Calendar } from "lucide-react";
 import { toast } from "sonner";
-import { getCachedPassword } from "@/lib/password-cache";
 
 interface ExportDialogProps {
   open: boolean;
@@ -101,16 +104,9 @@ export function ExportDialog({
     setLoading(true);
 
     try {
-      // Get cached password if calendar is protected
-      const password = getCachedPassword(calendarId);
-
       // Build URL
       let url = `/api/calendars/${calendarId}/export/${exportFormat}`;
       const params = new URLSearchParams();
-
-      if (password) {
-        params.append("password", password);
-      }
 
       if (exportFormat === "pdf") {
         // Add locale for proper date formatting and translations
@@ -129,6 +125,12 @@ export function ExportDialog({
 
       // Fetch the file
       const response = await fetch(url);
+
+      if (isRateLimitError(response)) {
+        await handleRateLimitError(response, t);
+        setLoading(false);
+        return;
+      }
 
       if (!response.ok) {
         if (response.status === 401) {

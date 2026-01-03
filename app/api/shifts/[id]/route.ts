@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { calendars, shifts } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import { verifyPassword } from "@/lib/password-utils";
 import { eventEmitter, CalendarChangeEvent } from "@/lib/event-emitter";
+import { getSessionUser } from "@/lib/auth/sessions";
+import { canViewCalendar, canEditCalendar } from "@/lib/auth/permissions";
 
 // GET single shift
 export async function GET(
@@ -12,8 +13,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const { searchParams } = new URL(request.url);
-    const password = searchParams.get("password");
+    const user = await getSessionUser(request.headers);
 
     const result = await db
       .select({
@@ -43,27 +43,13 @@ export async function GET(
       return NextResponse.json({ error: "Shift not found" }, { status: 404 });
     }
 
-    // Fetch calendar to check password
-    const [calendar] = await db
-      .select()
-      .from(calendars)
-      .where(eq(calendars.id, result[0].calendarId));
-
-    if (!calendar) {
+    // Check read permission (works for both authenticated users and guests)
+    const hasAccess = await canViewCalendar(user?.id, result[0].calendarId);
+    if (!hasAccess) {
       return NextResponse.json(
-        { error: "Calendar not found" },
-        { status: 404 }
+        { error: "Insufficient permissions" },
+        { status: 403 }
       );
-    }
-
-    // Verify password if calendar is protected AND locked
-    if (calendar.passwordHash && calendar.isLocked) {
-      if (!password || !verifyPassword(password, calendar.passwordHash)) {
-        return NextResponse.json(
-          { error: "Invalid password" },
-          { status: 401 }
-        );
-      }
     }
 
     return NextResponse.json(result[0]);
@@ -76,7 +62,7 @@ export async function GET(
   }
 }
 
-// PATCH update shift
+// PATCH update shift (requires write permission)
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -93,8 +79,9 @@ export async function PATCH(
       notes,
       isAllDay,
       isSecondary,
-      password,
     } = body;
+
+    const user = await getSessionUser(request.headers);
 
     // Fetch shift to get calendar ID
     const [existingShift] = await db
@@ -106,7 +93,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Shift not found" }, { status: 404 });
     }
 
-    // Fetch calendar to check password
+    // Fetch calendar
     const [calendar] = await db
       .select()
       .from(calendars)
@@ -119,14 +106,13 @@ export async function PATCH(
       );
     }
 
-    // Verify password if calendar is protected
-    if (calendar.passwordHash) {
-      if (!password || !verifyPassword(password, calendar.passwordHash)) {
-        return NextResponse.json(
-          { error: "Invalid password" },
-          { status: 401 }
-        );
-      }
+    // Check write permission (works for both authenticated users and guests)
+    const hasAccess = await canEditCalendar(user?.id, existingShift.calendarId);
+    if (!hasAccess) {
+      return NextResponse.json(
+        { error: "Insufficient permissions. Write access required." },
+        { status: 403 }
+      );
     }
 
     const updateData: Partial<typeof shifts.$inferInsert> = {};
@@ -163,26 +149,14 @@ export async function PATCH(
   }
 }
 
-// DELETE shift
+// DELETE shift (requires write permission)
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
-
-    // Read password from request body
-    let password: string | null = null;
-    const contentType = request.headers.get("content-type");
-
-    if (contentType?.includes("application/json")) {
-      try {
-        const body = await request.json();
-        password = body.password || null;
-      } catch {
-        // If body parsing fails, continue with null password
-      }
-    }
+    const user = await getSessionUser(request.headers);
 
     // Fetch shift to get calendar ID
     const [shift] = await db.select().from(shifts).where(eq(shifts.id, id));
@@ -191,27 +165,13 @@ export async function DELETE(
       return NextResponse.json({ error: "Shift not found" }, { status: 404 });
     }
 
-    // Fetch calendar to check password
-    const [calendar] = await db
-      .select()
-      .from(calendars)
-      .where(eq(calendars.id, shift.calendarId));
-
-    if (!calendar) {
+    // Check write permission (works for both authenticated users and guests)
+    const hasAccess = await canEditCalendar(user?.id, shift.calendarId);
+    if (!hasAccess) {
       return NextResponse.json(
-        { error: "Calendar not found" },
-        { status: 404 }
+        { error: "Insufficient permissions. Write access required." },
+        { status: 403 }
       );
-    }
-
-    // Verify password if calendar is protected
-    if (calendar.passwordHash) {
-      if (!password || !verifyPassword(password, calendar.passwordHash)) {
-        return NextResponse.json(
-          { error: "Invalid password" },
-          { status: 401 }
-        );
-      }
     }
 
     await db.delete(shifts).where(eq(shifts.id, id));

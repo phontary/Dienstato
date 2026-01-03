@@ -2,7 +2,10 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { CalendarWithCount } from "@/lib/types";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
-import { removeCachedPassword, setCachedPassword } from "@/lib/password-cache";
+import {
+  isRateLimitError,
+  handleRateLimitError,
+} from "@/lib/rate-limit-client";
 
 export function useCalendars(initialCalendarId?: string | null) {
   const t = useTranslations();
@@ -11,6 +14,7 @@ export function useCalendars(initialCalendarId?: string | null) {
     string | undefined
   >();
   const [loading, setLoading] = useState(true);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
   // Capture initialCalendarId on mount to prevent dependency changes
   const initialCalendarIdRef = useRef(initialCalendarId);
@@ -19,43 +23,43 @@ export function useCalendars(initialCalendarId?: string | null) {
     try {
       const response = await fetch("/api/calendars");
       const data = await response.json();
-      setCalendars(data);
+
+      // Ensure data is an array
+      const calendarsData = Array.isArray(data) ? data : [];
+      setCalendars(calendarsData);
+      setHasLoadedOnce(true);
 
       // Only auto-select on initial load
       setSelectedCalendar((current) => {
         // If a calendar is already selected and still exists, keep it
         if (
           current &&
-          data.some((cal: CalendarWithCount) => cal.id === current)
+          calendarsData.some((cal: CalendarWithCount) => cal.id === current)
         ) {
           return current;
         }
         // Otherwise, try initialCalendarId or fallback to first calendar
         if (
           initialCalendarIdRef.current &&
-          data.some(
+          calendarsData.some(
             (cal: CalendarWithCount) => cal.id === initialCalendarIdRef.current
           )
         ) {
           return initialCalendarIdRef.current;
-        } else if (data.length > 0) {
-          return data[0].id;
+        } else if (calendarsData.length > 0) {
+          return calendarsData[0].id;
         }
         return undefined;
       });
     } catch (error) {
       console.error("Failed to fetch calendars:", error);
+      setCalendars([]);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  const createCalendar = async (
-    name: string,
-    color: string,
-    password?: string,
-    isLocked?: boolean
-  ) => {
+  const createCalendar = async (name: string, color: string) => {
     try {
       const response = await fetch("/api/calendars", {
         method: "POST",
@@ -63,10 +67,14 @@ export function useCalendars(initialCalendarId?: string | null) {
         body: JSON.stringify({
           name,
           color,
-          password,
-          isLocked: isLocked || false,
+          guestPermission: "none", // Always default to "none" on creation
         }),
       });
+
+      if (isRateLimitError(response)) {
+        await handleRateLimitError(response, t);
+        return;
+      }
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -82,11 +90,6 @@ export function useCalendars(initialCalendarId?: string | null) {
       setCalendars((prev) => [...prev, newCalendar]);
       setSelectedCalendar(newCalendar.id);
 
-      // Cache the password if one was provided
-      if (password) {
-        setCachedPassword(newCalendar.id, password);
-      }
-
       toast.success(t("common.created", { item: t("calendar.title") }));
     } catch (error) {
       console.error("Failed to create calendar:", error);
@@ -99,9 +102,7 @@ export function useCalendars(initialCalendarId?: string | null) {
     updates: {
       name?: string;
       color?: string;
-      currentPassword?: string;
-      isLocked: boolean;
-      password?: string | null;
+      guestPermission?: "none" | "read" | "write";
     }
   ) => {
     try {
@@ -110,11 +111,6 @@ export function useCalendars(initialCalendarId?: string | null) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates),
       });
-
-      if (response.status === 401) {
-        toast.error(t("validation.passwordIncorrect"));
-        return { success: false, error: "unauthorized" as const };
-      }
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -132,15 +128,6 @@ export function useCalendars(initialCalendarId?: string | null) {
         prev.map((cal) => (cal.id === calendarId ? updatedCalendar : cal))
       );
 
-      // Handle password caching
-      if (updates.password === null) {
-        removeCachedPassword(calendarId);
-      } else if (updates.password) {
-        setCachedPassword(calendarId, updates.password);
-      } else if (updates.currentPassword) {
-        setCachedPassword(calendarId, updates.currentPassword);
-      }
-
       toast.success(t("common.updated", { item: t("calendar.title") }));
       return { success: true };
     } catch (error) {
@@ -154,20 +141,14 @@ export function useCalendars(initialCalendarId?: string | null) {
     }
   };
 
-  const deleteCalendar = async (calendarId: string, password?: string) => {
+  const deleteCalendar = async (calendarId: string) => {
     try {
       const response = await fetch(`/api/calendars/${calendarId}`, {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ password }),
       });
-
-      if (response.status === 401) {
-        toast.error(t("validation.passwordIncorrect"));
-        return false;
-      }
 
       if (response.ok) {
         setCalendars((prev) => {
@@ -183,7 +164,6 @@ export function useCalendars(initialCalendarId?: string | null) {
 
           return remainingCalendars;
         });
-        removeCachedPassword(calendarId);
 
         toast.success(t("common.deleted", { item: t("calendar.title") }));
         return true;
@@ -208,11 +188,49 @@ export function useCalendars(initialCalendarId?: string | null) {
     fetchCalendars();
   }, [fetchCalendars]);
 
+  // Listen for calendar subscription changes (SSE events + custom events)
+  useEffect(() => {
+    const handleCalendarChange = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      const { type, action } = customEvent.detail || {};
+
+      // Refetch calendars when subscriptions change
+      if (type === "calendar" && (action === "update" || action === "delete")) {
+        fetchCalendars();
+      }
+    };
+
+    const handleCalendarListChange = () => {
+      // Triggered by calendar subscription/dismissal actions
+      fetchCalendars();
+    };
+
+    // Listen to SSE calendar-change events
+    window.addEventListener("calendar-change" as never, handleCalendarChange);
+    // Listen to direct calendar list changes (subscriptions/dismissals)
+    window.addEventListener(
+      "calendar-list-change" as never,
+      handleCalendarListChange
+    );
+
+    return () => {
+      window.removeEventListener(
+        "calendar-change" as never,
+        handleCalendarChange
+      );
+      window.removeEventListener(
+        "calendar-list-change" as never,
+        handleCalendarListChange
+      );
+    };
+  }, [fetchCalendars]);
+
   return {
     calendars,
     selectedCalendar,
     setSelectedCalendar,
     loading,
+    hasLoadedOnce,
     createCalendar,
     updateCalendar,
     deleteCalendar,

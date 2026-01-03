@@ -20,19 +20,16 @@ import { useShifts } from "@/hooks/useShifts";
 import { usePresets } from "@/hooks/usePresets";
 import { useNotes } from "@/hooks/useNotes";
 import { useSSEConnection } from "@/hooks/useSSEConnection";
-import { usePasswordManagement } from "@/hooks/usePasswordManagement";
 import { useViewSettings } from "@/hooks/useViewSettings";
 import { useShiftActions } from "@/hooks/useShiftActions";
 import { useNoteActions } from "@/hooks/useNoteActions";
 import { useExternalSync } from "@/hooks/useExternalSync";
 import { useDialogStates } from "@/hooks/useDialogStates";
 import { useVersionInfo } from "@/hooks/useVersionInfo";
+import { useAuth } from "@/hooks/useAuth";
 import { EmptyCalendarState } from "@/components/empty-calendar-state";
-import { LockedCalendarView } from "@/components/locked-calendar-view";
-import { CalendarSkeleton } from "@/components/calendar-skeleton";
-import { CalendarContentSkeleton } from "@/components/calendar-content-skeleton";
-import { LockedCalendarSkeleton } from "@/components/locked-calendar-skeleton";
-import { CalendarCompareSkeleton } from "@/components/calendar-compare-skeleton";
+import { GuestEmptyState } from "@/components/guest-empty-state";
+import { FullscreenLoader } from "@/components/fullscreen-loader";
 import { CalendarContent } from "@/components/calendar-content";
 import { CalendarCompareSheet } from "@/components/calendar-compare-sheet";
 import { CalendarCompareView } from "@/components/calendar-compare-view";
@@ -40,10 +37,6 @@ import { AppFooter } from "@/components/app-footer";
 import { AppHeader } from "@/components/app-header";
 import { DialogManager } from "@/components/dialog-manager";
 import { getCalendarDays } from "@/lib/calendar-utils";
-import {
-  getCachedPassword,
-  verifyAndCachePassword,
-} from "@/lib/password-cache";
 import { formatDateToLocal } from "@/lib/date-utils";
 import { findNotesForDate } from "@/lib/event-utils";
 import { toast } from "sonner";
@@ -56,12 +49,16 @@ function HomeContent() {
   const dateLocale = getDateLocale(locale);
   const t = useTranslations();
 
+  // Auth hook
+  const { isGuest } = useAuth();
+
   // Data hooks
   const {
     calendars,
     selectedCalendar,
     setSelectedCalendar,
     loading,
+    hasLoadedOnce,
     createCalendar: createCalendarHook,
     deleteCalendar: deleteCalendarHook,
     refetchCalendars,
@@ -71,6 +68,7 @@ function HomeContent() {
     shifts,
     setShifts,
     loading: shiftsLoading,
+    hasLoadedOnce: shiftsLoadedOnce,
     createShift: createShiftHook,
     updateShift: updateShiftHook,
     deleteShift: deleteShiftHook,
@@ -80,6 +78,7 @@ function HomeContent() {
   const {
     presets,
     loading: presetsLoading,
+    hasLoadedOnce: presetsLoadedOnce,
     refetchPresets,
   } = usePresets(selectedCalendar);
 
@@ -117,18 +116,6 @@ function HomeContent() {
     fetchSyncErrorStatus,
   } = useExternalSync(selectedCalendar || null);
 
-  // Password management
-  const {
-    pendingAction,
-    setPendingAction,
-    isCalendarUnlocked,
-    setIsCalendarUnlocked,
-    isVerifyingCalendarPassword,
-    shouldHideUIElements,
-    handlePasswordSuccess: baseHandlePasswordSuccess,
-    verifyPasswordForAction,
-  } = usePasswordManagement(selectedCalendar || null, calendars);
-
   // View settings
   const viewSettings = useViewSettings();
 
@@ -140,10 +127,6 @@ function HomeContent() {
     createNote: createNoteHook,
     updateNote: updateNoteHook,
     deleteNote: deleteNoteHook,
-    onPasswordRequired: (action) => {
-      setPendingAction({ type: "edit", action });
-      dialogStates.setShowPasswordDialog(true);
-    },
   });
 
   // Wrapper for note submit that reloads compare data
@@ -164,11 +147,9 @@ function HomeContent() {
 
     // Reload notes for the specific calendar in compare mode
     if (isCompareMode && compareNoteCalendarId) {
-      const password = getCachedPassword(compareNoteCalendarId);
-      const passwordParam = password ? `&password=${password}` : "";
       try {
         const notesRes = await fetch(
-          `/api/notes?calendarId=${compareNoteCalendarId}${passwordParam}`
+          `/api/notes?calendarId=${compareNoteCalendarId}`
         );
         const notesData = notesRes.ok ? await notesRes.json() : [];
         setCompareCalendarData((prev) => {
@@ -191,11 +172,9 @@ function HomeContent() {
 
     // Reload notes for the specific calendar in compare mode
     if (isCompareMode && compareNoteCalendarId) {
-      const password = getCachedPassword(compareNoteCalendarId);
-      const passwordParam = password ? `&password=${password}` : "";
       try {
         const notesRes = await fetch(
-          `/api/notes?calendarId=${compareNoteCalendarId}${passwordParam}`
+          `/api/notes?calendarId=${compareNoteCalendarId}`
         );
         const notesData = notesRes.ok ? await notesRes.json() : [];
         setCompareCalendarData((prev) => {
@@ -222,9 +201,7 @@ function HomeContent() {
   };
 
   const handleDeleteNoteFromList = async (noteId: string) => {
-    const success = await deleteNoteHook(noteId, () => {
-      dialogStates.setShowPasswordDialog(true);
-    });
+    const success = await deleteNoteHook(noteId);
 
     if (success) {
       // Update the notes list in the dialog
@@ -240,11 +217,9 @@ function HomeContent() {
 
       // Reload compare mode data if needed
       if (isCompareMode && compareNoteCalendarId) {
-        const password = getCachedPassword(compareNoteCalendarId);
-        const passwordParam = password ? `&password=${password}` : "";
         try {
           const notesRes = await fetch(
-            `/api/notes?calendarId=${compareNoteCalendarId}${passwordParam}`
+            `/api/notes?calendarId=${compareNoteCalendarId}`
           );
           const notesData = notesRes.ok ? await notesRes.json() : [];
           setCompareCalendarData((prev) => {
@@ -286,7 +261,6 @@ function HomeContent() {
 
   // Shift actions
   const shiftActions = useShiftActions({
-    selectedCalendar: selectedCalendar || null,
     shifts,
     setShifts,
     presets,
@@ -294,10 +268,6 @@ function HomeContent() {
     updateShift: updateShiftHook,
     deleteShift: deleteShiftHook,
     onStatsRefresh: () => setStatsRefreshTrigger((prev) => prev + 1),
-    onPasswordRequired: (action) => {
-      setPendingAction({ type: "edit", action });
-      dialogStates.setShowPasswordDialog(true);
-    },
   });
 
   // SSE Connection
@@ -306,6 +276,7 @@ function HomeContent() {
     onShiftUpdate: refetchShifts,
     onPresetUpdate: refetchPresets,
     onNoteUpdate: refetchNotes,
+    onCalendarUpdate: refetchCalendars,
     onStatsRefresh: () => setStatsRefreshTrigger((prev) => prev + 1),
     onSyncLogUpdate: () => {
       fetchSyncErrorStatus();
@@ -327,18 +298,13 @@ function HomeContent() {
       await Promise.all(
         selectedCompareIds.map(async (calendarId) => {
           try {
-            const password = getCachedPassword(calendarId);
-            const passwordParam = password ? `&password=${password}` : "";
-
             // Fetch all data for this calendar in parallel
             const [shiftsRes, notesRes, syncsRes, presetsRes] =
               await Promise.all([
-                fetch(`/api/shifts?calendarId=${calendarId}${passwordParam}`),
-                fetch(`/api/notes?calendarId=${calendarId}${passwordParam}`),
-                fetch(
-                  `/api/external-syncs?calendarId=${calendarId}${passwordParam}`
-                ),
-                fetch(`/api/presets?calendarId=${calendarId}${passwordParam}`),
+                fetch(`/api/shifts?calendarId=${calendarId}`),
+                fetch(`/api/notes?calendarId=${calendarId}`),
+                fetch(`/api/external-syncs?calendarId=${calendarId}`),
+                fetch(`/api/presets?calendarId=${calendarId}`),
               ]);
 
             const [shiftsData, notesData, syncsData, presetsData] =
@@ -416,72 +382,18 @@ function HomeContent() {
     }
   }, [selectedCalendar, isCompareMode, selectedCompareIds, router]);
 
-  // Old URL update effect removed - now handled above
-
-  // Handle password success with data refresh
-  const handlePasswordSuccess = async () => {
-    if (isCompareMode && compareNoteCalendarId) {
-      // In compare mode, reload notes for the specific calendar
-      await refetchNotes();
-      const password = getCachedPassword(compareNoteCalendarId);
-      const passwordParam = password ? `&password=${password}` : "";
-      const notesRes = await fetch(
-        `/api/notes?calendarId=${compareNoteCalendarId}${passwordParam}`
-      );
-      const notesData = notesRes.ok ? await notesRes.json() : [];
-      setCompareCalendarData((prev) => {
-        const updated = new Map(prev);
-        const data = updated.get(compareNoteCalendarId);
-        if (data) {
-          updated.set(compareNoteCalendarId, { ...data, notes: notesData });
-        }
-        return updated;
-      });
-    } else {
-      await Promise.all([
-        refetchShifts(),
-        refetchPresets(),
-        refetchNotes(),
-        fetchExternalSyncs(),
-        fetchSyncErrorStatus(),
-      ]);
-      setStatsRefreshTrigger((prev) => prev + 1);
-    }
-    baseHandlePasswordSuccess();
-
-    // Execute pending action if exists
-    if (pendingAction?.action) {
-      await pendingAction.action();
-      setPendingAction(null);
-    }
-  };
-
   // Calendar operations
-  const handleDeleteCalendar = async (password?: string) => {
+  const handleDeleteCalendar = async () => {
     if (!selectedCalendar) return;
-    const success = await deleteCalendarHook(selectedCalendar, password);
+    const success = await deleteCalendarHook(selectedCalendar);
     if (success) {
       dialogStates.setShowCalendarSettingsDialog(false);
     }
   };
 
   // External sync operations
-  const handleExternalSyncClick = async () => {
-    const executed = await verifyPasswordForAction(async () => {
-      dialogStates.setShowExternalSyncDialog(true);
-    });
-    if (!executed) {
-      dialogStates.setShowPasswordDialog(true);
-    }
-  };
-
-  const handleSyncNotifications = async () => {
-    const executed = await verifyPasswordForAction(async () => {
-      dialogStates.setShowSyncNotificationDialog(true);
-    });
-    if (!executed) {
-      dialogStates.setShowPasswordDialog(true);
-    }
+  const handleSyncNotifications = () => {
+    dialogStates.setShowSyncNotificationDialog(true);
   };
 
   const handleSyncComplete = () => {
@@ -493,14 +405,9 @@ function HomeContent() {
   };
 
   // Manual shift creation
-  const handleManualShiftCreation = async () => {
-    const executed = await verifyPasswordForAction(async () => {
-      setSelectedDate(new Date());
-      dialogStates.setShowShiftDialog(true);
-    });
-    if (!executed) {
-      dialogStates.setShowPasswordDialog(true);
-    }
+  const handleManualShiftCreation = () => {
+    setSelectedDate(new Date());
+    dialogStates.setShowShiftDialog(true);
   };
 
   // Day interaction handlers
@@ -651,36 +558,6 @@ function HomeContent() {
     });
 
     try {
-      const password = getCachedPassword(calendarId);
-
-      // Check password if needed
-      const result = await verifyAndCachePassword(calendarId, password);
-      if (result.protected && !result.valid) {
-        // Clear toggling state before showing password dialog
-        setCompareCalendarData((prev) => {
-          const updated = new Map(prev);
-          const data = updated.get(calendarId);
-          if (data) {
-            const newTogglingDates = new Set(data.togglingDates);
-            newTogglingDates.delete(dateKey);
-            updated.set(calendarId, {
-              ...data,
-              togglingDates: newTogglingDates,
-            });
-          }
-          return updated;
-        });
-        setPendingAction({
-          type: "edit",
-          calendarId: calendarId,
-          action: async () => {
-            await handleCompareDayClick(calendarId, targetDate);
-          },
-        });
-        dialogStates.setShowPasswordDialog(true);
-        return;
-      }
-
       // Check if shift already exists
       const existingShift = calendarData.shifts.find(
         (shift) =>
@@ -696,7 +573,6 @@ function HomeContent() {
         const response = await fetch(`/api/shifts/${existingShift.id}`, {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ password }),
         });
 
         if (!response.ok) {
@@ -704,11 +580,7 @@ function HomeContent() {
         } else {
           toast.success(t("common.deleted", { item: t("shift.shift_one") }));
           // Reload shifts for this calendar
-          const shiftsRes = await fetch(
-            `/api/shifts?calendarId=${calendarId}${
-              password ? `&password=${password}` : ""
-            }`
-          );
+          const shiftsRes = await fetch(`/api/shifts?calendarId=${calendarId}`);
           const shiftsData = shiftsRes.ok ? await shiftsRes.json() : [];
           setCompareCalendarData((prev) => {
             const updated = new Map(prev);
@@ -732,7 +604,6 @@ function HomeContent() {
           notes: preset.notes || "",
           presetId: preset.id,
           isAllDay: preset.isAllDay || false,
-          password,
         };
 
         const response = await fetch("/api/shifts", {
@@ -746,11 +617,7 @@ function HomeContent() {
         } else {
           toast.success(t("common.created", { item: t("shift.shift_one") }));
           // Reload shifts for this calendar
-          const shiftsRes = await fetch(
-            `/api/shifts?calendarId=${calendarId}${
-              password ? `&password=${password}` : ""
-            }`
-          );
+          const shiftsRes = await fetch(`/api/shifts?calendarId=${calendarId}`);
           const shiftsData = shiftsRes.ok ? await shiftsRes.json() : [];
           setCompareCalendarData((prev) => {
             const updated = new Map(prev);
@@ -871,25 +738,24 @@ function HomeContent() {
     dialogStates.setShowSyncedShiftsDialog(true);
   };
 
+  // Show fullscreen loader only on first load (prevents spinner on navigation)
+  // Only show if at least one data source hasn't loaded yet
+  if (
+    (!hasLoadedOnce && loading) ||
+    (!shiftsLoadedOnce && shiftsLoading) ||
+    (!presetsLoadedOnce && presetsLoading)
+  ) {
+    return <FullscreenLoader message={t("common.loading")} />;
+  }
+
   // Calendar grid calculations
   const calendarDays = getCalendarDays(currentDate);
 
-  // Check if selected calendar is locked and has no cached password
-  const isSelectedCalendarLocked =
-    selectedCalendar &&
-    calendars.find((c) => c.id === selectedCalendar)?.isLocked &&
-    !getCachedPassword(selectedCalendar);
-
   // If in compare mode, render compare view
   if (isCompareMode) {
-    // Show skeleton while loading
+    // Show loader while loading compare data
     if (compareDataLoading) {
-      return (
-        <CalendarCompareSkeleton
-          count={selectedCompareIds.length}
-          hidePresetHeader={viewSettings.hidePresetHeader}
-        />
-      );
+      return <FullscreenLoader message={t("common.loading")} />;
     }
 
     return (
@@ -976,13 +842,10 @@ function HomeContent() {
           onHidePresetHeaderChange={viewSettings.handleHidePresetHeaderChange}
           onPresetsChange={async (calendarId: string) => {
             // Reload presets and shifts for specific calendar
-            const password = getCachedPassword(calendarId);
-            const passwordParam = password ? `&password=${password}` : "";
-
             try {
               const [presetsRes, shiftsRes] = await Promise.all([
-                fetch(`/api/presets?calendarId=${calendarId}${passwordParam}`),
-                fetch(`/api/shifts?calendarId=${calendarId}${passwordParam}`),
+                fetch(`/api/presets?calendarId=${calendarId}`),
+                fetch(`/api/shifts?calendarId=${calendarId}`),
               ]);
 
               const [presetsData, shiftsData] = await Promise.all([
@@ -1018,12 +881,8 @@ function HomeContent() {
               await Promise.all(
                 selectedCompareIds.map(async (calendarId) => {
                   try {
-                    const password = getCachedPassword(calendarId);
-                    const passwordParam = password
-                      ? `&password=${password}`
-                      : "";
                     const shiftsRes = await fetch(
-                      `/api/shifts?calendarId=${calendarId}${passwordParam}`
+                      `/api/shifts?calendarId=${calendarId}`
                     );
                     const shiftsData = shiftsRes.ok
                       ? await shiftsRes.json()
@@ -1055,62 +914,6 @@ function HomeContent() {
             loadShifts();
           }}
           onStatsRefresh={() => setStatsRefreshTrigger((prev) => prev + 1)}
-          onPasswordRequired={(calendarId, action) => {
-            setPendingAction({ type: "edit", calendarId, action });
-            dialogStates.setShowPasswordDialog(true);
-          }}
-          onUnlockCalendar={(calendarId) => {
-            // Reload data for unlocked calendar
-            const loadCalendarData = async () => {
-              try {
-                const password = getCachedPassword(calendarId);
-                const passwordParam = password ? `&password=${password}` : "";
-
-                const [shiftsRes, notesRes, syncsRes, presetsRes] =
-                  await Promise.all([
-                    fetch(
-                      `/api/shifts?calendarId=${calendarId}${passwordParam}`
-                    ),
-                    fetch(
-                      `/api/notes?calendarId=${calendarId}${passwordParam}`
-                    ),
-                    fetch(
-                      `/api/external-syncs?calendarId=${calendarId}${passwordParam}`
-                    ),
-                    fetch(
-                      `/api/presets?calendarId=${calendarId}${passwordParam}`
-                    ),
-                  ]);
-
-                const [shiftsData, notesData, syncsData, presetsData] =
-                  await Promise.all([
-                    shiftsRes.ok ? shiftsRes.json() : [],
-                    notesRes.ok ? notesRes.json() : [],
-                    syncsRes.ok ? syncsRes.json() : [],
-                    presetsRes.ok ? presetsRes.json() : [],
-                  ]);
-
-                setCompareCalendarData((prev) => {
-                  const updated = new Map(prev);
-                  updated.set(calendarId, {
-                    shifts: shiftsData,
-                    notes: notesData,
-                    externalSyncs: syncsData,
-                    presets: presetsData,
-                    togglingDates:
-                      prev.get(calendarId)?.togglingDates || new Set<string>(),
-                  });
-                  return updated;
-                });
-              } catch (error) {
-                console.error(
-                  `Error loading data for calendar ${calendarId}:`,
-                  error
-                );
-              }
-            };
-            loadCalendarData();
-          }}
         />
 
         {/* Dialogs still work in compare mode */}
@@ -1122,20 +925,18 @@ function HomeContent() {
           onShiftDialogChange={dialogStates.setShowShiftDialog}
           onShiftSubmit={shiftActions.handleShiftSubmit}
           selectedDate={selectedDate}
-          selectedCalendar={
-            pendingAction?.calendarId || selectedCalendar || null
-          }
+          selectedCalendar={selectedCalendar || null}
           onPresetsChange={refetchPresets}
-          showPasswordDialog={dialogStates.showPasswordDialog}
-          onPasswordDialogChange={dialogStates.setShowPasswordDialog}
           calendars={calendars}
-          onPasswordSuccess={handlePasswordSuccess}
           showCalendarSettingsDialog={dialogStates.showCalendarSettingsDialog}
           onCalendarSettingsDialogChange={
             dialogStates.setShowCalendarSettingsDialog
           }
           onCalendarSettingsSuccess={refetchCalendars}
           onDeleteCalendar={handleDeleteCalendar}
+          onExternalSyncFromSettings={() =>
+            dialogStates.setShowExternalSyncDialog(true)
+          }
           showExternalSyncDialog={dialogStates.showExternalSyncDialog}
           onExternalSyncDialogChange={dialogStates.setShowExternalSyncDialog}
           syncErrorRefreshTrigger={syncLogRefreshTrigger}
@@ -1193,17 +994,19 @@ function HomeContent() {
     );
   }
 
-  // Loading state
-  if (loading) {
-    return <CalendarSkeleton />;
-  }
-
   // Empty state
   if (calendars.length === 0) {
+    // If user is guest, show guest empty state (no create calendar option)
+    if (isGuest) {
+      return <GuestEmptyState />;
+    }
+
+    // Otherwise, show normal empty state with create calendar option
     return (
       <>
         <EmptyCalendarState
           onCreateCalendar={() => dialogStates.setShowCalendarDialog(true)}
+          showUserMenu={true}
         />
         <DialogManager
           showCalendarDialog={dialogStates.showCalendarDialog}
@@ -1215,16 +1018,16 @@ function HomeContent() {
           selectedDate={selectedDate}
           selectedCalendar={selectedCalendar || null}
           onPresetsChange={refetchPresets}
-          showPasswordDialog={dialogStates.showPasswordDialog}
-          onPasswordDialogChange={dialogStates.setShowPasswordDialog}
           calendars={calendars}
-          onPasswordSuccess={handlePasswordSuccess}
           showCalendarSettingsDialog={dialogStates.showCalendarSettingsDialog}
           onCalendarSettingsDialogChange={
             dialogStates.setShowCalendarSettingsDialog
           }
           onCalendarSettingsSuccess={refetchCalendars}
           onDeleteCalendar={handleDeleteCalendar}
+          onExternalSyncFromSettings={() =>
+            dialogStates.setShowExternalSyncDialog(true)
+          }
           showExternalSyncDialog={dialogStates.showExternalSyncDialog}
           onExternalSyncDialogChange={dialogStates.setShowExternalSyncDialog}
           syncErrorRefreshTrigger={syncLogRefreshTrigger}
@@ -1309,90 +1112,62 @@ function HomeContent() {
         onSelectCalendar={setSelectedCalendar}
         onSelectPreset={setSelectedPresetId}
         onCreateCalendar={() => dialogStates.setShowCalendarDialog(true)}
-        onManagePassword={() =>
-          dialogStates.setShowCalendarSettingsDialog(true)
-        }
-        onExternalSync={handleExternalSyncClick}
+        onSettings={() => dialogStates.setShowCalendarSettingsDialog(true)}
         onSyncNotifications={handleSyncNotifications}
         onCompare={handleCompareClick}
         onPresetsChange={refetchPresets}
         onShiftsChange={refetchShifts}
         onStatsRefresh={() => setStatsRefreshTrigger((prev) => prev + 1)}
-        onPasswordRequired={(action) => {
-          setPendingAction({ type: "edit", presetAction: action });
-          dialogStates.setShowPasswordDialog(true);
-        }}
         onManualShiftCreation={handleManualShiftCreation}
         onMobileCalendarDialogChange={dialogStates.setShowMobileCalendarDialog}
         onViewSettingsClick={() => dialogStates.setShowViewSettingsDialog(true)}
-        presetsLoading={presetsLoading && !isSelectedCalendarLocked}
+        presetsLoading={presetsLoading}
         hidePresetHeader={viewSettings.hidePresetHeader}
         onHidePresetHeaderChange={viewSettings.handleHidePresetHeaderChange}
       />
 
       <div className="container max-w-4xl mx-auto px-1 py-3 sm:p-4 flex-1">
-        {isVerifyingCalendarPassword || shiftsLoading ? (
-          isSelectedCalendarLocked ? (
-            <LockedCalendarSkeleton />
-          ) : (
-            <CalendarContentSkeleton daysCount={calendarDays.length} />
-          )
-        ) : selectedCalendar && !isCalendarUnlocked ? (
-          <LockedCalendarView
-            calendarId={selectedCalendar}
-            onUnlock={() => {
-              setIsCalendarUnlocked(true);
-              handlePasswordSuccess();
-            }}
-          />
-        ) : (
-          <CalendarContent
-            calendarDays={calendarDays}
-            currentDate={currentDate}
-            onDateChange={setCurrentDate}
-            shifts={shifts}
-            notes={notes}
-            selectedPresetId={selectedPresetId}
-            togglingDates={shiftActions.togglingDates}
-            externalSyncs={externalSyncs}
-            maxShiftsToShow={
-              viewSettings.shiftsPerDay === null
-                ? undefined
-                : viewSettings.shiftsPerDay
-            }
-            maxExternalShiftsToShow={
-              viewSettings.externalShiftsPerDay === null
-                ? undefined
-                : viewSettings.externalShiftsPerDay
-            }
-            showShiftNotes={viewSettings.showShiftNotes}
-            showFullTitles={viewSettings.showFullTitles}
-            shiftSortType={viewSettings.shiftSortType}
-            shiftSortOrder={viewSettings.shiftSortOrder}
-            combinedSortMode={viewSettings.combinedSortMode}
-            highlightedWeekdays={viewSettings.highlightedWeekdays}
-            highlightColor={viewSettings.highlightColor}
-            selectedCalendar={selectedCalendar || null}
-            statsRefreshTrigger={statsRefreshTrigger}
-            shouldHideUIElements={shouldHideUIElements}
-            locale={dateLocale}
-            onDayClick={handleDayClick}
-            onDayRightClick={
-              shouldHideUIElements ? undefined : handleDayRightClick
-            }
-            onNoteIconClick={
-              shouldHideUIElements ? undefined : handleNoteIconClick
-            }
-            onLongPress={shouldHideUIElements ? undefined : handleLongPressDay}
-            onShowAllShifts={handleShowAllShifts}
-            onShowSyncedShifts={handleShowSyncedShifts}
-            onDeleteShift={shiftActions.handleDeleteShift}
-          />
-        )}
+        <CalendarContent
+          calendarDays={calendarDays}
+          currentDate={currentDate}
+          onDateChange={setCurrentDate}
+          shifts={shifts}
+          notes={notes}
+          selectedPresetId={selectedPresetId}
+          togglingDates={shiftActions.togglingDates}
+          externalSyncs={externalSyncs}
+          maxShiftsToShow={
+            viewSettings.shiftsPerDay === null
+              ? undefined
+              : viewSettings.shiftsPerDay
+          }
+          maxExternalShiftsToShow={
+            viewSettings.externalShiftsPerDay === null
+              ? undefined
+              : viewSettings.externalShiftsPerDay
+          }
+          showShiftNotes={viewSettings.showShiftNotes}
+          showFullTitles={viewSettings.showFullTitles}
+          shiftSortType={viewSettings.shiftSortType}
+          shiftSortOrder={viewSettings.shiftSortOrder}
+          combinedSortMode={viewSettings.combinedSortMode}
+          highlightedWeekdays={viewSettings.highlightedWeekdays}
+          highlightColor={viewSettings.highlightColor}
+          selectedCalendar={selectedCalendar || null}
+          statsRefreshTrigger={statsRefreshTrigger}
+          locale={dateLocale}
+          onDayClick={handleDayClick}
+          onDayRightClick={handleDayRightClick}
+          onNoteIconClick={handleNoteIconClick}
+          onLongPress={handleLongPressDay}
+          onShowAllShifts={handleShowAllShifts}
+          onShowSyncedShifts={handleShowSyncedShifts}
+          onDeleteShift={shiftActions.handleDeleteShift}
+        />
       </div>
 
       {/* Floating Action Button */}
-      {selectedCalendar && !shouldHideUIElements && (
+      {selectedCalendar && (
         <motion.div
           className="hidden sm:block fixed bottom-6 right-6 z-50"
           initial={{ scale: 0, opacity: 0 }}
@@ -1420,16 +1195,16 @@ function HomeContent() {
         selectedDate={selectedDate}
         selectedCalendar={selectedCalendar || null}
         onPresetsChange={refetchPresets}
-        showPasswordDialog={dialogStates.showPasswordDialog}
-        onPasswordDialogChange={dialogStates.setShowPasswordDialog}
         calendars={calendars}
-        onPasswordSuccess={handlePasswordSuccess}
         showCalendarSettingsDialog={dialogStates.showCalendarSettingsDialog}
         onCalendarSettingsDialogChange={
           dialogStates.setShowCalendarSettingsDialog
         }
         onCalendarSettingsSuccess={refetchCalendars}
         onDeleteCalendar={handleDeleteCalendar}
+        onExternalSyncFromSettings={() =>
+          dialogStates.setShowExternalSyncDialog(true)
+        }
         showExternalSyncDialog={dialogStates.showExternalSyncDialog}
         onExternalSyncDialogChange={dialogStates.setShowExternalSyncDialog}
         syncErrorRefreshTrigger={syncLogRefreshTrigger}

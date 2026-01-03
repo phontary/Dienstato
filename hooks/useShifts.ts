@@ -3,12 +3,12 @@ import { ShiftWithCalendar } from "@/lib/types";
 import { ShiftFormData } from "@/components/shift-sheet";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
-import { getCachedPassword } from "@/lib/password-cache";
 
 export function useShifts(calendarId: string | undefined) {
   const t = useTranslations();
   const [shifts, setShifts] = useState<ShiftWithCalendar[]>([]);
   const [loading, setLoading] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
   const fetchShifts = useCallback(
     async (showLoading = true) => {
@@ -18,20 +18,16 @@ export function useShifts(calendarId: string | undefined) {
         setLoading(true);
       }
       try {
-        const password = getCachedPassword(calendarId);
         const params = new URLSearchParams({ calendarId });
-        if (password) {
-          params.append("password", password);
-        }
 
         const response = await fetch(`/api/shifts?${params}`);
         if (!response.ok) {
-          // Calendar is locked and no valid password - return empty array
           setShifts([]);
           return;
         }
         const data = await response.json();
         setShifts(data);
+        setHasLoadedOnce(true);
       } catch (error) {
         console.error("Failed to fetch shifts:", error);
         setShifts([]);
@@ -65,15 +61,12 @@ export function useShifts(calendarId: string | undefined) {
     setShifts((prev) => [...prev, optimisticShift]);
 
     try {
-      const password = getCachedPassword(calendarId);
-
       const response = await fetch("/api/shifts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...formData,
           calendarId: calendarId,
-          password,
         }),
       });
 
@@ -84,7 +77,7 @@ export function useShifts(calendarId: string | undefined) {
           errorText
         );
         setShifts((shifts) => shifts.filter((s) => s.id !== tempId));
-        toast.error(t("common.createError", { item: t("shift.title") }));
+        toast.error(t("common.createError", { item: t("shift.shift_one") }));
         return null;
       }
 
@@ -97,29 +90,18 @@ export function useShifts(calendarId: string | undefined) {
     } catch (error) {
       console.error("Failed to create shift:", error);
       setShifts((shifts) => shifts.filter((s) => s.id !== tempId));
-      toast.error(t("common.createError", { item: t("shift.title") }));
+      toast.error(t("common.createError", { item: t("shift.shift_one") }));
       return null;
     }
   };
 
-  const updateShift = async (
-    id: string,
-    formData: ShiftFormData,
-    onPasswordRequired?: () => void
-  ) => {
+  const updateShift = async (id: string, formData: ShiftFormData) => {
     try {
-      const password = getCachedPassword(calendarId);
-
       const response = await fetch(`/api/shifts/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...formData, password }),
+        body: JSON.stringify({ ...formData }),
       });
-
-      if (response.status === 401) {
-        onPasswordRequired?.();
-        return false;
-      }
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -127,37 +109,30 @@ export function useShifts(calendarId: string | undefined) {
           `Failed to update shift: ${response.status} ${response.statusText}`,
           errorText
         );
-        toast.error(t("common.updateError", { item: t("shift.title") }));
+        toast.error(t("common.updateError", { item: t("shift.shift_one") }));
         return false;
       }
 
       const updatedShift = await response.json();
       setShifts((prev) => prev.map((s) => (s.id === id ? updatedShift : s)));
-      toast.success(t("common.updated", { item: t("shift.title") }));
+      toast.success(t("common.updated", { item: t("shift.shift_one") }));
       return true;
     } catch (error) {
       console.error("Failed to update shift:", error);
-      toast.error(t("common.updateError", { item: t("shift.title") }));
+      toast.error(t("common.updateError", { item: t("shift.shift_one") }));
       return false;
     }
   };
 
-  const deleteShift = async (id: string, onPasswordRequired?: () => void) => {
+  const deleteShift = async (id: string) => {
     try {
-      const password = getCachedPassword(calendarId);
-
       const response = await fetch(`/api/shifts/${id}`, {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({}),
       });
-
-      if (response.status === 401) {
-        onPasswordRequired?.();
-        return false;
-      }
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -165,16 +140,16 @@ export function useShifts(calendarId: string | undefined) {
           `Failed to delete shift: ${response.status} ${response.statusText}`,
           errorText
         );
-        toast.error(t("common.deleteError", { item: t("shift.title") }));
+        toast.error(t("common.deleteError", { item: t("shift.shift_one") }));
         return false;
       }
 
       setShifts((prev) => prev.filter((s) => s.id !== id));
-      toast.success(t("common.deleted", { item: t("shift.title") }));
+      toast.success(t("common.deleted", { item: t("shift.shift_one") }));
       return true;
     } catch (error) {
       console.error("Failed to delete shift:", error);
-      toast.error(t("common.deleteError", { item: t("shift.title") }));
+      toast.error(t("common.deleteError", { item: t("shift.shift_one") }));
       return false;
     }
   };
@@ -193,6 +168,7 @@ export function useShifts(calendarId: string | undefined) {
     shifts,
     setShifts,
     loading,
+    hasLoadedOnce,
     createShift,
     updateShift,
     deleteShift,

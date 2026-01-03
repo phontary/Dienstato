@@ -1,9 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { externalSyncs, shifts, syncLogs, calendars } from "@/lib/db/schema";
 import { eq, inArray } from "drizzle-orm";
-import { verifyPassword } from "@/lib/password-utils";
 import ICAL from "ical.js";
+import { getSessionUser } from "@/lib/auth/sessions";
+import { canEditCalendar } from "@/lib/auth/permissions";
 import {
   expandRecurringEvents,
   splitMultiDayEvent,
@@ -11,15 +12,25 @@ import {
   needsUpdate,
 } from "@/lib/external-calendar-utils";
 import { eventEmitter } from "@/lib/event-emitter";
+import { rateLimit } from "@/lib/rate-limiter";
+import {
+  logUserAction,
+  logSystemEvent,
+  type SyncExecutedMetadata,
+} from "@/lib/audit-log";
 
 /**
  * Core sync logic extracted for reuse by both API route and auto-sync service
  * @param syncId - The external sync ID
  * @param syncType - Whether this is "auto" or "manual" sync
+ * @param userId - Optional user ID for audit logging (null for auto-sync)
+ * @param request - Optional request object for audit logging
  */
 export async function syncExternalCalendar(
   syncId: string,
-  syncType: "auto" | "manual" = "manual"
+  syncType: "auto" | "manual" = "manual",
+  userId?: string | null,
+  request?: NextRequest
 ) {
   // Get the external sync configuration
   const [externalSync] = await db
@@ -300,6 +311,24 @@ export async function syncExternalCalendar(
 
     stats = transactionResult;
 
+    // Log successful sync event to audit logs
+    const logFunction = syncType === "auto" ? logSystemEvent : logUserAction;
+    await logFunction<SyncExecutedMetadata>({
+      action: "sync.executed",
+      userId: userId || null,
+      resourceType: "sync",
+      resourceId: syncId,
+      metadata: {
+        calendarName: externalSync.calendarId, // Will be enriched with actual name in UI
+        syncName: externalSync.name,
+        shiftsAdded: stats.created,
+        shiftsUpdated: stats.updated,
+        shiftsDeleted: stats.deleted,
+        success: true,
+      },
+      request,
+    });
+
     // Emit event for sync log creation after successful transaction
     eventEmitter.emit("calendar-change", {
       type: "sync-log",
@@ -325,6 +354,25 @@ export async function syncExternalCalendar(
       syncedAt: new Date(),
     });
 
+    // Log failed sync event to audit logs
+    const logFunction = syncType === "auto" ? logSystemEvent : logUserAction;
+    await logFunction<SyncExecutedMetadata>({
+      action: "sync.executed",
+      userId: userId || null,
+      resourceType: "sync",
+      resourceId: syncId,
+      metadata: {
+        calendarName: externalSync.calendarId,
+        syncName: externalSync.name,
+        shiftsAdded: 0,
+        shiftsUpdated: 0,
+        shiftsDeleted: 0,
+        success: false,
+        error: errorMessage,
+      },
+      request,
+    });
+
     // Emit event for sync log creation
     eventEmitter.emit("calendar-change", {
       type: "sync-log",
@@ -339,26 +387,13 @@ export async function syncExternalCalendar(
 }
 
 export async function POST(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id: syncId } = await params;
 
-    // Read password from request body
-    let password: string | null = null;
-    const contentType = request.headers.get("content-type");
-
-    if (contentType?.includes("application/json")) {
-      try {
-        const body = await request.json();
-        password = body.password || null;
-      } catch {
-        // If body parsing fails, continue with null password
-      }
-    }
-
-    // Fetch external sync to get calendar ID
+    // Fetch external sync to get calendar ID for rate limiting and permission checks
     const [externalSync] = await db
       .select()
       .from(externalSyncs)
@@ -371,7 +406,20 @@ export async function POST(
       );
     }
 
-    // Fetch calendar to check password
+    // Get user for audit logging and rate limiting
+    const user = await getSessionUser(request.headers);
+
+    // Rate limiting: 5 syncs per 5 minutes PER CALENDAR
+    // Use calendarId as identifier to prevent spamming one calendar
+    const rateLimitResponse = rateLimit(
+      request,
+      user?.id || null,
+      "external-sync",
+      externalSync.calendarId
+    );
+    if (rateLimitResponse) return rateLimitResponse;
+
+    // Fetch calendar to verify it exists
     const [calendar] = await db
       .select()
       .from(calendars)
@@ -384,17 +432,21 @@ export async function POST(
       );
     }
 
-    // Verify password if calendar is protected
-    if (calendar.passwordHash) {
-      if (!password || !verifyPassword(password, calendar.passwordHash)) {
-        return NextResponse.json(
-          { error: "Invalid password" },
-          { status: 401 }
-        );
-      }
+    // Check edit permissions (works for both authenticated users and guests)
+    const hasAccess = await canEditCalendar(user?.id, externalSync.calendarId);
+    if (!hasAccess) {
+      return NextResponse.json(
+        { error: "Insufficient permissions. Write access required." },
+        { status: 403 }
+      );
     }
 
-    const stats = await syncExternalCalendar(syncId, "manual");
+    const stats = await syncExternalCalendar(
+      syncId,
+      "manual",
+      user?.id,
+      request
+    );
 
     return NextResponse.json({
       success: true,

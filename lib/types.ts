@@ -5,11 +5,16 @@ export interface CalendarWithCount {
   id: string;
   name: string;
   color: string;
-  passwordHash?: string | null;
-  isLocked?: boolean;
+  ownerId?: string | null;
+  guestPermission?: "none" | "read" | "write";
   createdAt: Date | null;
   updatedAt: Date | null;
   _count?: number;
+  // Permission metadata (only for authenticated users)
+  sharePermission?: "owner" | "admin" | "write" | "read";
+  tokenPermission?: "read" | "write"; // Permission from access token
+  isSubscribed?: boolean;
+  subscriptionSource?: "guest" | "shared" | "token";
 }
 
 export interface ShiftWithCalendar {

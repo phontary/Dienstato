@@ -3,7 +3,8 @@ import { db } from "@/lib/db";
 import { calendarNotes, calendars } from "@/lib/db/schema";
 import { eq, and, gte, lte } from "drizzle-orm";
 import { eventEmitter, CalendarChangeEvent } from "@/lib/event-emitter";
-import { verifyPassword } from "@/lib/password-utils";
+import { getSessionUser } from "@/lib/auth/sessions";
+import { canViewCalendar, canEditCalendar } from "@/lib/auth/permissions";
 
 // GET calendar notes for a calendar (with optional date filter)
 export async function GET(request: Request) {
@@ -19,9 +20,7 @@ export async function GET(request: Request) {
       );
     }
 
-    const password = searchParams.get("password");
-
-    // Fetch calendar to check password
+    // Fetch calendar
     const [calendar] = await db
       .select()
       .from(calendars)
@@ -34,14 +33,14 @@ export async function GET(request: Request) {
       );
     }
 
-    // Verify password if calendar is protected AND locked
-    if (calendar.passwordHash && calendar.isLocked) {
-      if (!password || !verifyPassword(password, calendar.passwordHash)) {
-        return NextResponse.json(
-          { error: "Invalid password" },
-          { status: 401 }
-        );
-      }
+    // Check permissions (works for both authenticated users and guests)
+    const user = await getSessionUser(request.headers);
+    const hasAccess = await canViewCalendar(user?.id, calendar.id);
+    if (!hasAccess) {
+      return NextResponse.json(
+        { error: "Insufficient permissions" },
+        { status: 403 }
+      );
     }
 
     const query = db
@@ -90,7 +89,6 @@ export async function POST(request: Request) {
       color,
       recurringPattern,
       recurringInterval,
-      password,
     } = body;
 
     if (!calendarId || !date || !note) {
@@ -108,7 +106,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // Fetch calendar to check password
+    // Fetch calendar
     const [calendar] = await db
       .select()
       .from(calendars)
@@ -121,14 +119,14 @@ export async function POST(request: Request) {
       );
     }
 
-    // Verify password if calendar is protected
-    if (calendar.passwordHash) {
-      if (!password || !verifyPassword(password, calendar.passwordHash)) {
-        return NextResponse.json(
-          { error: "Invalid password" },
-          { status: 401 }
-        );
-      }
+    // Check permissions (works for both authenticated users and guests)
+    const user = await getSessionUser(request.headers);
+    const hasAccess = await canEditCalendar(user?.id, calendar.id);
+    if (!hasAccess) {
+      return NextResponse.json(
+        { error: "Insufficient permissions" },
+        { status: 403 }
+      );
     }
 
     const [calendarNote] = await db

@@ -2,14 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { shiftPresets, calendars } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import { verifyPassword } from "@/lib/password-utils";
 import { eventEmitter, CalendarChangeEvent } from "@/lib/event-emitter";
+import { getSessionUser } from "@/lib/auth/sessions";
+import { canEditCalendar } from "@/lib/auth/permissions";
 
 // PATCH reorder presets
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
-    const { calendarId, presetOrders, password } = body;
+    const { calendarId, presetOrders } = body;
 
     if (!calendarId || !presetOrders || !Array.isArray(presetOrders)) {
       return NextResponse.json(
@@ -34,7 +35,9 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // Fetch calendar to check password
+    const user = await getSessionUser(request.headers);
+
+    // Fetch calendar
     const [calendar] = await db
       .select()
       .from(calendars)
@@ -47,14 +50,13 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // Verify password if calendar is protected
-    if (calendar.passwordHash) {
-      if (!password || !verifyPassword(password, calendar.passwordHash)) {
-        return NextResponse.json(
-          { error: "Invalid password" },
-          { status: 401 }
-        );
-      }
+    // Check edit permission (works for both authenticated users and guests)
+    const hasAccess = await canEditCalendar(user?.id, calendarId);
+    if (!hasAccess) {
+      return NextResponse.json(
+        { error: "Insufficient permissions" },
+        { status: 403 }
+      );
     }
 
     // Verify all preset IDs belong to the specified calendarId
