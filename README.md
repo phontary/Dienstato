@@ -1,9 +1,10 @@
 <div align="center">
-  <img src="public/android/android-launchericon-512-512.png" alt="BetterShift Logo" width="140" height="140" />
-  
-  # BetterShift
 
-**Modern shift management for variable work schedules**
+# BetterShift
+
+**Your favorite shift management application!**
+
+*BetterShift is a self-hosted shift management application for teams and individuals with variable work schedules. Create unlimited calendars, toggle shifts with a single click, and share them with your team via user accounts, links, or public access. Sync external calendars from Google, Outlook, or iCal, export to ICS/PDF, and manage everything through an admin panel with role-based permissions and audit logging.*
 
 ![Version](https://img.shields.io/github/v/release/pantelx/bettershift?style=flat-square&label=version)
 ![Build](https://img.shields.io/github/check-runs/pantelx/bettershift/main?style=flat-square&label=build)
@@ -11,11 +12,11 @@
 
 [Demo](https://bettershift.pantelx.com) · [Documentation](#documentation) · [Quick Start](#quick-start) · [Discord](https://discord.gg/Ma4SnagqwE)
 
-</div>
-
----
-
-BetterShift is a self-hosted shift management application for teams and individuals with variable work schedules. Create unlimited calendars, toggle shifts with a single click, and share them with your team via user accounts, links, or public access. Sync external calendars from Google, Outlook, or iCal, export to ICS/PDF, and manage everything through an admin panel with role-based permissions and audit logging.
+<details>
+<summary>Show Screenshots</summary>
+<img width="1920" height="1080" alt="calendar_page" src="https://github.com/user-attachments/assets/9b8b01b5-0a5d-4359-8024-5764866cf92a" />
+<img width="1920" height="1080" alt="admin_panel" src="https://github.com/user-attachments/assets/976e1c4d-6c7c-4462-abe7-8d81edb33666" />
+</details>
 
 ## Features
 
@@ -32,9 +33,9 @@ BetterShift is a self-hosted shift management application for teams and individu
 | **Localization**   | English, German, Italian                                        |
 | **PWA**            | Installable on mobile and desktop                               |
 
----
-
 ## Quick Start
+
+</div>
 
 ### Docker
 
@@ -70,8 +71,7 @@ cp .env.example .env
 npm run db:migrate
 npm run dev
 ```
-
----
+<div align="center">
 
 ## Documentation
 
@@ -82,9 +82,9 @@ npm run dev
 | [Permissions](docs/PERMISSIONS.md)               | Sharing, access tokens, guest access      |
 | [Migration Guide](docs/MIGRATION_AUTH_TOGGLE.md) | Enable auth on existing instances         |
 
----
-
 ## Configuration
+
+</div>
 
 ### Required
 
@@ -119,17 +119,18 @@ CUSTOM_OIDC_ISSUER=https://sso.example.com/.well-known/openid-configuration
 
 See [.env.example](.env.example) for all options.
 
----
+<div align="center">
 
 ## Database Commands
+
+</div>
 
 ```bash
 npm run db:migrate    # Apply migrations
 npm run db:generate   # Generate migrations after schema changes
 npm run db:studio     # Open Drizzle Studio GUI
 ```
-
----
+<div align="center">
 
 ## Docker Images
 
@@ -141,8 +142,6 @@ Images are available at `ghcr.io/pantelx/bettershift`:
 | `vX.Y.Z` | Specific version             |
 | `dev`    | Development build (unstable) |
 
----
-
 ## Tech Stack
 
 | Layer     | Technology                        |
@@ -153,28 +152,24 @@ Images are available at `ghcr.io/pantelx/bettershift`:
 | UI        | Tailwind CSS, shadcn/ui, Radix UI |
 | i18n      | next-intl                         |
 
----
-
 ## Contributing
 
 Contributions are welcome. Please follow these steps:
 
-1. Fork the repository
-2. Create a feature branch
-3. Run `npm test` before committing
-4. Submit a pull request
-
----
+Fork the repository - 
+Create a feature branch -
+Run `npm test` before committing -
+Submit a pull request
 
 ## Support
 
-- [Discord](https://discord.gg/Ma4SnagqwE) - Community and support
-- [GitHub Issues](https://github.com/pantelx/bettershift/issues) - Bug reports and feature requests
-- [Buy Me a Coffee](https://www.buymeacoffee.com/pantel) - Support development
-- [GitHub Sponsors](https://github.com/sponsors/pantelx) - Become a sponsor
-
----
+[Discord](https://discord.gg/Ma4SnagqwE) - 
+[GitHub Issues](https://github.com/pantelx/bettershift/issues) - 
+[Buy Me a Coffee](https://www.buymeacoffee.com/pantel) -
+[GitHub Sponsors](https://github.com/sponsors/pantelx)
 
 ## License
 
 MIT License. See [LICENSE](LICENSE) for details.
+
+</div>
