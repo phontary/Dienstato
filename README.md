@@ -1,5 +1,6 @@
 <div align="center">
-
+<img width="150" height="150" alt="logo" src="https://github.com/user-attachments/assets/47c81850-366e-413a-b209-cb2a0d0e534a" />
+  
 # BetterShift
 
 **Your favorite shift management application!**
