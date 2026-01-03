@@ -5,7 +5,7 @@
 
 **Your favorite shift management application!**
 
-*BetterShift is a self-hosted shift management application for teams and individuals with variable work schedules. Create unlimited calendars, toggle shifts with a single click, and share them with your team via user accounts, links, or public access. Sync external calendars from Google, Outlook, or iCal, export to ICS/PDF, and manage everything through an admin panel with role-based permissions and audit logging.*
+_BetterShift is a self-hosted shift management application for teams and individuals with variable work schedules. Create unlimited calendars, toggle shifts with a single click, and share them with your team via user accounts, links, or public access. Sync external calendars from Google, Outlook, or iCal, export to ICS/PDF, and manage everything through an admin panel with role-based permissions and audit logging._
 
 ![Version](https://img.shields.io/github/v/release/pantelx/bettershift?style=flat-square&label=version)
 ![Build](https://img.shields.io/github/check-runs/pantelx/bettershift/main?style=flat-square&label=build)
@@ -72,6 +72,7 @@ cp .env.example .env
 npm run db:migrate
 npm run dev
 ```
+
 <div align="center">
 
 ## Documentation
@@ -131,6 +132,7 @@ npm run db:migrate    # Apply migrations
 npm run db:generate   # Generate migrations after schema changes
 npm run db:studio     # Open Drizzle Studio GUI
 ```
+
 <div align="center">
 
 ## Docker Images
@@ -157,15 +159,15 @@ Images are available at `ghcr.io/pantelx/bettershift`:
 
 Contributions are welcome. Please follow these steps:
 
-Fork the repository - 
+Fork the repository -
 Create a feature branch -
 Run `npm test` before committing -
 Submit a pull request
 
 ## Support
 
-[Discord](https://discord.gg/Ma4SnagqwE) - 
-[GitHub Issues](https://github.com/pantelx/bettershift/issues) - 
+[Discord](https://discord.gg/Ma4SnagqwE) -
+[GitHub Issues](https://github.com/pantelx/bettershift/issues) -
 [Buy Me a Coffee](https://www.buymeacoffee.com/pantel) -
 [GitHub Sponsors](https://github.com/sponsors/pantelx)
 
