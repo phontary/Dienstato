@@ -10,6 +10,104 @@ import { logAuditEvent } from "@/lib/audit-log";
 import { rateLimit } from "@/lib/rate-limiter";
 import { auth } from "@/lib/auth";
 import { isAdmin } from "@/lib/auth/admin";
+import { db } from "@/lib/db";
+import { sql } from "drizzle-orm";
+import { user } from "@/lib/db/schema";
+
+// =====================================================
+// Health Check Cache (In-Memory)
+// =====================================================
+interface HealthCacheEntry {
+  status: "healthy" | "unhealthy";
+  timestamp: number;
+  ttl: number; // Time-to-live in milliseconds
+}
+
+let healthCache: HealthCacheEntry | null = null;
+const HEALTH_CACHE_TTL = 10000; // 10 seconds
+const HEALTH_CHECK_TIMEOUT = 2000; // 2 seconds
+
+/**
+ * Lightweight internal health check function that directly probes the database
+ * without calling API routes. Avoids middleware recursion and internal fetch issues.
+ */
+async function checkHealthInternal(): Promise<"healthy" | "unhealthy"> {
+  let timeoutId: NodeJS.Timeout | null = null;
+
+  try {
+    // Create a timeout promise that rejects after HEALTH_CHECK_TIMEOUT
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error("Database health check timeout"));
+      }, HEALTH_CHECK_TIMEOUT);
+    });
+
+    // Create the database query promise
+    const dbPromise = db
+      .select({ count: sql<number>`count(*)` })
+      .from(user)
+      .limit(1);
+
+    // Race the query against the timeout
+    await Promise.race([dbPromise, timeoutPromise]);
+
+    // Query succeeded before timeout
+    if (timeoutId) clearTimeout(timeoutId);
+    return "healthy";
+  } catch (error) {
+    // Clear timeout if it exists
+    if (timeoutId) clearTimeout(timeoutId);
+
+    // Log specific message for timeout vs other errors
+    if (error instanceof Error && error.message.includes("timeout")) {
+      console.error(
+        "[Middleware] Health check timed out after",
+        HEALTH_CHECK_TIMEOUT,
+        "ms"
+      );
+    } else {
+      console.error(
+        "[Middleware] Health check failed:",
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+    return "unhealthy";
+  }
+}
+
+/**
+ * Cached health check with TTL. Returns cached result if fresh,
+ * otherwise performs a new check. Does not cache transient errors.
+ */
+async function getCachedHealthStatus(): Promise<"healthy" | "unhealthy"> {
+  const now = Date.now();
+
+  // Return cached result if still valid
+  if (healthCache && now - healthCache.timestamp < healthCache.ttl) {
+    return healthCache.status;
+  }
+
+  // Perform new health check
+  const status = await checkHealthInternal();
+
+  // Only cache successful results to avoid caching transient errors
+  if (status === "healthy") {
+    healthCache = {
+      status,
+      timestamp: now,
+      ttl: HEALTH_CACHE_TTL,
+    };
+  } else {
+    // For unhealthy status, use a shorter TTL to allow faster recovery
+    healthCache = {
+      status,
+      timestamp: now,
+      ttl: 5000, // 5 seconds for unhealthy state
+    };
+  }
+
+  return status;
+}
 
 /**
  * Proxy for authentication and route protection (Next.js 16)
@@ -21,9 +119,70 @@ import { isAdmin } from "@/lib/auth/admin";
  * - Stores return URL for post-login redirect
  * - Supports guest access for viewing calendars
  * - Handles access token sharing (/share/token/xyz)
+ * - Blocks all routes when system is unhealthy (except health check, version, and release APIs)
  */
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // =====================================================
+  // Health Check - Block all routes if system unhealthy
+  // =====================================================
+  const healthCheckExemptRoutes = [
+    "/api/health",
+    "/api/version",
+    "/api/releases",
+    "/manifest.json", // Allow manifest.json for PWA
+  ];
+
+  const isHealthCheckExempt = healthCheckExemptRoutes.some((route) =>
+    pathname.startsWith(route)
+  );
+
+  // Special handling for /system-unavailable route
+  if (pathname.startsWith("/system-unavailable")) {
+    // Use cached health check to avoid blocking and redirect loops
+    try {
+      const status = await getCachedHealthStatus();
+
+      // Only redirect to home if we have a definitive healthy result
+      if (status === "healthy") {
+        return NextResponse.redirect(new URL("/", request.url));
+      }
+
+      // System is unhealthy - allow access to error page
+      return NextResponse.next();
+    } catch (error) {
+      // Log the error instead of silently swallowing it
+      console.error(
+        "[Middleware] Health check failed in /system-unavailable handler:",
+        error instanceof Error ? error.message : String(error)
+      );
+      // Always treat fetch failures/timeouts as "unhealthy" to allow access to error page
+      return NextResponse.next();
+    }
+  }
+
+  if (!isHealthCheckExempt) {
+    try {
+      // Use cached, timeout-protected health check (non-blocking)
+      const status = await getCachedHealthStatus();
+
+      if (status === "unhealthy") {
+        // System is definitively unhealthy - redirect to error page
+        return NextResponse.redirect(
+          new URL("/system-unavailable", request.url)
+        );
+      }
+    } catch (error) {
+      // Health check middleware error (not a system health issue)
+      // Log the error but allow the request through to avoid blocking all traffic
+      console.error(
+        "[Middleware] Health check error - allowing request through:",
+        error instanceof Error ? error.message : String(error)
+      );
+      // Continue to authentication/authorization checks below
+    }
+  }
 
   // =====================================================
   // Access Token Handling (/share/token/[token])

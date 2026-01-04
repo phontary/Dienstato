@@ -1,10 +1,12 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { sql } from "drizzle-orm";
-import { readFile } from "fs/promises";
-import { join } from "path";
+import { user } from "@/lib/db/schema";
+import { getCurrentVersion } from "@/lib/version";
 
 export const dynamic = "force-dynamic";
+
+const HEALTH_CHECK_TIMEOUT = 5000; // 5 seconds for health endpoint
 
 interface HealthStatus {
   status: "healthy" | "unhealthy";
@@ -22,12 +24,12 @@ interface HealthStatus {
   };
 }
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   const startTime = Date.now();
   const health: HealthStatus = {
     status: "healthy",
     timestamp: new Date().toISOString(),
-    version: "unknown",
+    version: await getCurrentVersion(),
     checks: {
       database: {
         status: "ok",
@@ -39,25 +41,47 @@ export async function GET(request: NextRequest) {
     },
   };
 
-  // Check version
+  // Check database connection and schema
+  let timeoutId: NodeJS.Timeout | null = null;
   try {
-    const versionPath = join(process.cwd(), ".version");
-    const version = await readFile(versionPath, "utf-8");
-    health.version = version.trim();
-  } catch (error) {
-    // Version file might not exist in dev mode
-    health.version = process.env.NODE_ENV === "production" ? "unknown" : "dev";
-  }
+    // Create a timeout promise that rejects after HEALTH_CHECK_TIMEOUT
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error("Database health check timeout"));
+      }, HEALTH_CHECK_TIMEOUT);
+    });
 
-  // Check database connection
-  try {
-    db.run(sql`SELECT 1`);
+    // Create the database query promise
+    const dbPromise = db
+      .select({ count: sql<number>`count(*)` })
+      .from(user)
+      .limit(1);
+
+    // Race the query against the timeout
+    await Promise.race([dbPromise, timeoutPromise]);
+
+    // Query succeeded before timeout
+    if (timeoutId) clearTimeout(timeoutId);
     health.checks.database.status = "ok";
   } catch (error) {
+    // Clear timeout if it exists
+    if (timeoutId) clearTimeout(timeoutId);
+
     health.status = "unhealthy";
     health.checks.database.status = "error";
-    health.checks.database.message =
-      error instanceof Error ? error.message : "Database connection failed";
+
+    // Log the actual error for debugging
+    console.error(
+      "[Health] Database check failed:",
+      error instanceof Error ? error.message : String(error)
+    );
+
+    // Provide generic message to client
+    if (error instanceof Error && error.message.includes("timeout")) {
+      health.checks.database.message = "Database query timeout";
+    } else {
+      health.checks.database.message = "Database unavailable";
+    }
   }
 
   const responseTime = Date.now() - startTime;
