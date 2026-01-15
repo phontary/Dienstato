@@ -18,18 +18,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   isRateLimitError,
   handleRateLimitError,
 } from "@/lib/rate-limit-client";
 import { Download, FileText, Calendar } from "lucide-react";
 import { toast } from "sonner";
+import { CalendarWithCount } from "@/lib/types";
+import { motion } from "motion/react";
 
 interface ExportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   calendarId: string;
   calendarName: string;
+  availableCalendars?: CalendarWithCount[];
 }
 
 export function ExportDialog({
@@ -37,6 +41,7 @@ export function ExportDialog({
   onOpenChange,
   calendarId,
   calendarName,
+  availableCalendars = [],
 }: ExportDialogProps) {
   const t = useTranslations();
   const locale = useLocale();
@@ -47,6 +52,8 @@ export function ExportDialog({
   const [selectedMonth, setSelectedMonth] = useState("");
   const [selectedYear, setSelectedYear] = useState("");
   const [loading, setLoading] = useState(false);
+  const [multiCalendar, setMultiCalendar] = useState(false);
+  const [selectedCalendarIds, setSelectedCalendarIds] = useState<string[]>([]);
 
   // Generate month options (current month ± 12 months)
   const monthOptions = useMemo(() => {
@@ -87,9 +94,9 @@ export function ExportDialog({
         today.getMonth() + 1
       ).padStart(2, "0")}`;
       const currentYear = today.getFullYear();
-
       setSelectedMonth(defaultMonth);
       setSelectedYear(currentYear.toString());
+      setSelectedCalendarIds([calendarId]); // Pre-select current calendar
     } else {
       // Reset state when dialog closes
       setExportFormat("ics");
@@ -97,21 +104,29 @@ export function ExportDialog({
       setSelectedMonth("");
       setSelectedYear("");
       setLoading(false);
+      setMultiCalendar(false);
+      setSelectedCalendarIds([]);
     }
-  }, [open]);
+  }, [open, calendarId]);
 
+  // Handle export action
   const handleExport = async () => {
+    // Validate calendar selection for multi-calendar export
+    if (multiCalendar && selectedCalendarIds.length === 0) {
+      toast.error(t("export.selectAtLeastOne"));
+      return;
+    }
+
     setLoading(true);
 
     try {
-      // Build URL
-      let url = `/api/calendars/${calendarId}/export/${exportFormat}`;
+      // Unified API endpoint
+      const url = `/api/export/${exportFormat}`;
       const params = new URLSearchParams();
 
+      // Add PDF-specific params
       if (exportFormat === "pdf") {
-        // Add locale for proper date formatting and translations
         params.append("locale", locale);
-
         if (exportRange === "month" && selectedMonth) {
           params.append("month", selectedMonth);
         } else if (exportRange === "year" && selectedYear) {
@@ -119,12 +134,21 @@ export function ExportDialog({
         }
       }
 
-      if (params.toString()) {
-        url += `?${params.toString()}`;
-      }
+      const urlWithParams = params.toString() ? `${url}?${params}` : url;
+
+      // Determine calendar IDs to export
+      const idsToExport = multiCalendar ? selectedCalendarIds : [calendarId];
+
+      const fetchOptions: RequestInit = {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ calendarIds: idsToExport }),
+      };
 
       // Fetch the file
-      const response = await fetch(url);
+      const response = await fetch(urlWithParams, fetchOptions);
 
       if (isRateLimitError(response)) {
         await handleRateLimitError(response, t);
@@ -177,17 +201,95 @@ export function ExportDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-w-[95vw] max-h-[85vh] flex flex-col p-0 gap-0 border border-border/50 bg-gradient-to-b from-background via-background to-muted/30 backdrop-blur-xl shadow-2xl">
-        <DialogHeader className="border-b border-border/50 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-6 pb-5 space-y-1.5">
-          <DialogTitle className="text-xl font-semibold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[500px]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Download className="size-5" />
             {t("export.title")}
           </DialogTitle>
-          <DialogDescription className="text-sm text-muted-foreground">
-            {t("export.description")}
-          </DialogDescription>
+          <DialogDescription>{t("export.description")}</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 overflow-y-auto flex-1 px-6 pb-6 pt-6">
+        <div className="space-y-4">
+          {/* Multi-Calendar Export Toggle */}
+          {availableCalendars.length > 1 && (
+            <div className="space-y-2 rounded-lg border border-border/50 bg-muted/20 p-4">
+              <div className="flex items-start gap-3">
+                <Checkbox
+                  id="multi-calendar"
+                  checked={multiCalendar}
+                  onCheckedChange={(checked) => {
+                    setMultiCalendar(checked === true);
+                    if (checked) {
+                      setSelectedCalendarIds([calendarId]);
+                    }
+                  }}
+                  className="mt-0.5"
+                />
+                <div className="flex-1 space-y-1">
+                  <Label
+                    htmlFor="multi-calendar"
+                    className="cursor-pointer font-medium"
+                  >
+                    {t("export.multiCalendar")}
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    {t("export.multiCalendarHint")}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Calendar Selection (shown when multi-calendar is enabled) */}
+          {multiCalendar && availableCalendars.length > 0 && (
+            <div className="space-y-2">
+              <Label>{t("export.selectCalendars")}</Label>
+              <p className="text-xs text-muted-foreground mb-3">
+                {t("export.selectCalendarsDescription")}
+              </p>
+              <div className="max-h-[200px] overflow-y-auto space-y-2 border border-border/50 rounded-md p-3 bg-background/50">
+                {availableCalendars.map((calendar) => {
+                  const isSelected = selectedCalendarIds.includes(calendar.id);
+                  return (
+                    <motion.div
+                      key={calendar.id}
+                      className="flex items-center gap-3 p-2 rounded-md hover:bg-accent/50 cursor-pointer transition-colors"
+                      onClick={() => {
+                        setSelectedCalendarIds((prev) =>
+                          prev.includes(calendar.id)
+                            ? prev.filter((id) => id !== calendar.id)
+                            : [...prev, calendar.id]
+                        );
+                      }}
+                      whileHover={{ scale: 1.01 }}
+                      whileTap={{ scale: 0.99 }}
+                    >
+                      <Checkbox
+                        checked={isSelected}
+                        className="pointer-events-none"
+                      />
+                      <div
+                        className="w-4 h-4 rounded-full shrink-0"
+                        style={{ backgroundColor: calendar.color }}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate text-sm">
+                          {calendar.name}
+                        </p>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                {t("export.selectedCount", {
+                  count: selectedCalendarIds.length,
+                })}
+              </p>
+            </div>
+          )}
+
           {/* Export Format */}
           <div className="space-y-2">
             <Label>{t("export.formatLabel")}</Label>
