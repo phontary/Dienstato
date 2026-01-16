@@ -30,7 +30,6 @@ interface CalendarContentProps {
   highlightedWeekdays?: number[];
   highlightColor?: string;
   selectedCalendar: string | null;
-  statsRefreshTrigger: number;
   locale?: Locale;
   onDayClick: (date: Date) => void;
   onDayRightClick?: (e: React.MouseEvent, date: Date) => void;
@@ -123,7 +122,6 @@ export function CalendarContent(props: CalendarContentProps) {
         <ShiftStats
           calendarId={props.selectedCalendar || undefined}
           currentDate={props.currentDate}
-          refreshTrigger={props.statsRefreshTrigger}
         />
 
         <ShiftsList

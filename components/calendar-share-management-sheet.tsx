@@ -41,10 +41,14 @@ export function CalendarShareManagementSheet({
   const { isAuthEnabled } = useAuthFeatures();
 
   const [activeTab, setActiveTab] = useState("users");
-  const [guestPermission, setGuestPermission] = useState<
-    "none" | "read" | "write"
-  >(calendarGuestPermission);
+  const [optimisticGuestPermission, setOptimisticGuestPermission] = useState<
+    "none" | "read" | "write" | null
+  >(null);
   const [saving, setSaving] = useState(false);
+
+  // Use optimistic value during save, otherwise use prop value
+  // This avoids calling setState in an effect and potential cascading renders
+  const guestPermission = optimisticGuestPermission ?? calendarGuestPermission;
 
   // Show public access tab when auth is enabled (allows sharing with authenticated users via guestPermission)
   // This is separate from allowGuest which controls unauthenticated access
@@ -55,7 +59,7 @@ export function CalendarShareManagementSheet({
   ) => {
     if (!canManageShares) return;
 
-    setGuestPermission(value);
+    setOptimisticGuestPermission(value);
     setSaving(true);
 
     await updateCalendar(calendarId, {
@@ -63,6 +67,7 @@ export function CalendarShareManagementSheet({
     });
 
     setSaving(false);
+    setOptimisticGuestPermission(null);
   };
 
   return (

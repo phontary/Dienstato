@@ -9,18 +9,15 @@ import { Plus } from "lucide-react";
 import { getDateLocale } from "@/lib/locales";
 import { motion, AnimatePresence } from "motion/react";
 import { ShiftWithCalendar } from "@/lib/types";
-import {
-  ShiftPreset,
-  CalendarNote,
-  ExternalSync,
-  Shift,
-} from "@/lib/db/schema";
+import { CalendarNote } from "@/lib/db/schema";
 import { useCalendars } from "@/hooks/useCalendars";
-import { useShifts, normalizeShift } from "@/hooks/useShifts";
+import { useShifts } from "@/hooks/useShifts";
 import { usePresets } from "@/hooks/usePresets";
-import { useNotes, normalizeNote } from "@/hooks/useNotes";
-import { useSSEConnection } from "@/hooks/useSSEConnection";
+import { useNotes } from "@/hooks/useNotes";
+import { useCompareData } from "@/hooks/useCompareData";
 import { useViewSettings } from "@/hooks/useViewSettings";
+import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/query-keys";
 import { useShiftActions } from "@/hooks/useShiftActions";
 import { useNoteActions } from "@/hooks/useNoteActions";
 import { useExternalSync } from "@/hooks/useExternalSync";
@@ -66,11 +63,9 @@ function HomeContent() {
 
   const {
     shifts,
-    setShifts,
     loading: shiftsLoading,
     hasLoadedOnce: shiftsLoadedOnce,
     createShift: createShiftHook,
-    updateShift: updateShiftHook,
     deleteShift: deleteShiftHook,
     refetchShifts,
   } = useShifts(selectedCalendar);
@@ -79,7 +74,6 @@ function HomeContent() {
     presets,
     loading: presetsLoading,
     hasLoadedOnce: presetsLoadedOnce,
-    refetchPresets,
   } = usePresets(selectedCalendar);
 
   // Local state
@@ -88,8 +82,6 @@ function HomeContent() {
   >();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
-  const [statsRefreshTrigger, setStatsRefreshTrigger] = useState(0);
-  const [isConnected, setIsConnected] = useState(true);
   const [compareNoteCalendarId, setCompareNoteCalendarId] = useState<
     string | undefined
   >();
@@ -98,23 +90,30 @@ function HomeContent() {
   const [isCompareMode, setIsCompareMode] = useState(false);
   const [showCompareSelector, setShowCompareSelector] = useState(false);
   const [selectedCompareIds, setSelectedCompareIds] = useState<string[]>([]);
-  const [compareDataLoading, setCompareDataLoading] = useState(false);
+
+  // Local UI state for toggling dates in compare mode (shows spinner during API call)
+  const [compareTogglingDates, setCompareTogglingDates] = useState<
+    Map<string, Set<string>>
+  >(new Map());
+
+  // Query client for cache invalidation
+  const queryClient = useQueryClient();
+
+  // Compare mode data using React Query
+  const compareData = useCompareData({
+    calendarIds: selectedCompareIds,
+    enabled: isCompareMode,
+  });
 
   const {
     notes,
     createNote: createNoteHook,
     updateNote: updateNoteHook,
     deleteNote: deleteNoteHook,
-    refetchNotes,
   } = useNotes(isCompareMode ? compareNoteCalendarId : selectedCalendar);
-  const {
-    externalSyncs,
-    hasSyncErrors,
-    syncLogRefreshTrigger,
-    setSyncLogRefreshTrigger,
-    fetchExternalSyncs,
-    fetchSyncErrorStatus,
-  } = useExternalSync(selectedCalendar || null);
+  const { externalSyncs, hasSyncErrors } = useExternalSync(
+    selectedCalendar || null
+  );
 
   // View settings
   const viewSettings = useViewSettings();
@@ -145,24 +144,9 @@ function HomeContent() {
       recurringInterval
     );
 
-    // Reload notes for the specific calendar in compare mode
+    // Invalidate notes cache for the specific calendar in compare mode
     if (isCompareMode && compareNoteCalendarId) {
-      try {
-        const notesRes = await fetch(
-          `/api/notes?calendarId=${compareNoteCalendarId}`
-        );
-        const notesData = notesRes.ok ? await notesRes.json() : [];
-        setCompareCalendarData((prev) => {
-          const updated = new Map(prev);
-          const data = updated.get(compareNoteCalendarId);
-          if (data) {
-            updated.set(compareNoteCalendarId, { ...data, notes: notesData });
-          }
-          return updated;
-        });
-      } catch (error) {
-        console.error("Failed to reload notes:", error);
-      }
+      compareData.invalidateNotes(compareNoteCalendarId);
     }
   };
 
@@ -170,24 +154,9 @@ function HomeContent() {
   const handleNoteDelete = async () => {
     await noteActions.handleNoteDelete();
 
-    // Reload notes for the specific calendar in compare mode
+    // Invalidate notes cache for the specific calendar in compare mode
     if (isCompareMode && compareNoteCalendarId) {
-      try {
-        const notesRes = await fetch(
-          `/api/notes?calendarId=${compareNoteCalendarId}`
-        );
-        const notesData = notesRes.ok ? await notesRes.json() : [];
-        setCompareCalendarData((prev) => {
-          const updated = new Map(prev);
-          const data = updated.get(compareNoteCalendarId);
-          if (data) {
-            updated.set(compareNoteCalendarId, { ...data, notes: notesData });
-          }
-          return updated;
-        });
-      } catch (error) {
-        console.error("Failed to reload notes:", error);
-      }
+      compareData.invalidateNotes(compareNoteCalendarId);
     }
   };
 
@@ -215,24 +184,9 @@ function HomeContent() {
         dialogStates.setShowNotesListDialog(false);
       }
 
-      // Reload compare mode data if needed
+      // Invalidate compare mode data if needed
       if (isCompareMode && compareNoteCalendarId) {
-        try {
-          const notesRes = await fetch(
-            `/api/notes?calendarId=${compareNoteCalendarId}`
-          );
-          const notesData = notesRes.ok ? await notesRes.json() : [];
-          setCompareCalendarData((prev) => {
-            const updated = new Map(prev);
-            const data = updated.get(compareNoteCalendarId);
-            if (data) {
-              updated.set(compareNoteCalendarId, { ...data, notes: notesData });
-            }
-            return updated;
-          });
-        } catch (error) {
-          console.error("Failed to reload notes:", error);
-        }
+        compareData.invalidateNotes(compareNoteCalendarId);
       }
     }
   };
@@ -242,108 +196,16 @@ function HomeContent() {
     noteActions.openNoteDialog(date, undefined);
   };
 
-  // External sync management
-  const [compareCalendarData, setCompareCalendarData] = useState<
-    Map<
-      string,
-      {
-        shifts: ShiftWithCalendar[];
-        notes: CalendarNote[];
-        externalSyncs: ExternalSync[];
-        presets: ShiftPreset[];
-        togglingDates: Set<string>;
-      }
-    >
-  >(new Map());
-
   // Version info
   const versionInfo = useVersionInfo();
 
   // Shift actions
   const shiftActions = useShiftActions({
     shifts,
-    setShifts,
     presets,
     createShift: createShiftHook,
-    updateShift: updateShiftHook,
     deleteShift: deleteShiftHook,
-    onStatsRefresh: () => setStatsRefreshTrigger((prev) => prev + 1),
   });
-
-  // SSE Connection
-  useSSEConnection({
-    calendarId: selectedCalendar,
-    onShiftUpdate: refetchShifts,
-    onPresetUpdate: refetchPresets,
-    onNoteUpdate: refetchNotes,
-    onCalendarUpdate: refetchCalendars,
-    onStatsRefresh: () => setStatsRefreshTrigger((prev) => prev + 1),
-    onSyncLogUpdate: () => {
-      fetchSyncErrorStatus();
-      setSyncLogRefreshTrigger((prev) => prev + 1);
-    },
-    isConnected,
-    setIsConnected,
-  });
-
-  // Load data for compare mode
-  useEffect(() => {
-    if (!isCompareMode || selectedCompareIds.length === 0) return;
-
-    const loadCompareData = async () => {
-      setCompareDataLoading(true);
-      const dataMap = new Map();
-
-      // Load all calendars in parallel
-      await Promise.all(
-        selectedCompareIds.map(async (calendarId) => {
-          try {
-            // Fetch all data for this calendar in parallel
-            const [shiftsRes, notesRes, syncsRes, presetsRes] =
-              await Promise.all([
-                fetch(`/api/shifts?calendarId=${calendarId}`),
-                fetch(`/api/notes?calendarId=${calendarId}`),
-                fetch(`/api/external-syncs?calendarId=${calendarId}`),
-                fetch(`/api/presets?calendarId=${calendarId}`),
-              ]);
-
-            const [shiftsData, notesData, syncsData, presetsData] =
-              await Promise.all([
-                shiftsRes.ok ? shiftsRes.json() : [],
-                notesRes.ok ? notesRes.json() : [],
-                syncsRes.ok ? syncsRes.json() : [],
-                presetsRes.ok ? presetsRes.json() : [],
-              ]);
-
-            dataMap.set(calendarId, {
-              shifts: shiftsData.map(normalizeShift),
-              notes: notesData.map(normalizeNote),
-              externalSyncs: syncsData,
-              presets: presetsData,
-              togglingDates: new Set<string>(),
-            });
-          } catch (error) {
-            console.error(
-              `Error loading data for calendar ${calendarId}:`,
-              error
-            );
-            dataMap.set(calendarId, {
-              shifts: [],
-              notes: [],
-              externalSyncs: [],
-              presets: [],
-              togglingDates: new Set<string>(),
-            });
-          }
-        })
-      );
-
-      setCompareCalendarData(dataMap);
-      setCompareDataLoading(false);
-    };
-
-    loadCompareData();
-  }, [isCompareMode, selectedCompareIds]);
 
   // Load compare mode from URL on initial load
   useEffect(() => {
@@ -364,7 +226,7 @@ function HomeContent() {
       // If compare param is removed from URL, exit compare mode
       setIsCompareMode(false);
       setSelectedCompareIds([]);
-      setCompareCalendarData(new Map());
+      setCompareTogglingDates(new Map());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, calendars]);
@@ -385,10 +247,8 @@ function HomeContent() {
   // Calendar operations
   const handleDeleteCalendar = async () => {
     if (!selectedCalendar) return;
-    const success = await deleteCalendarHook(selectedCalendar);
-    if (success) {
-      dialogStates.setShowCalendarSettingsDialog(false);
-    }
+    await deleteCalendarHook(selectedCalendar);
+    dialogStates.setShowCalendarSettingsDialog(false);
   };
 
   // External sync operations
@@ -397,11 +257,11 @@ function HomeContent() {
   };
 
   const handleSyncComplete = () => {
-    refetchShifts();
-    refetchCalendars();
-    setStatsRefreshTrigger((prev) => prev + 1);
-    fetchExternalSyncs();
-    fetchSyncErrorStatus();
+    // Invalidate caches - React Query will refetch automatically
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.shifts.byCalendar(selectedCalendar!),
+    });
+    queryClient.invalidateQueries({ queryKey: queryKeys.calendars.all });
   };
 
   // Manual shift creation
@@ -519,7 +379,7 @@ function HomeContent() {
   const handleExitCompare = () => {
     setIsCompareMode(false);
     setSelectedCompareIds([]);
-    setCompareCalendarData(new Map());
+    setCompareTogglingDates(new Map());
     // Immediately update URL to prevent re-loading from URL parameter
     if (selectedCalendar) {
       router.replace(`/?id=${selectedCalendar}`, { scroll: false });
@@ -541,10 +401,9 @@ function HomeContent() {
 
     if (!selectedPresetId) {
       // No preset selected, just show existing shifts if any
-      const calendarData = compareCalendarData.get(calendarId);
-      if (!calendarData) return;
+      const shifts = compareData.shiftsMap.get(calendarId) || [];
 
-      const dayShifts = calendarData.shifts.filter(
+      const dayShifts = shifts.filter(
         (shift) => shift.date && isSameDay(shift.date as Date, targetDate)
       );
 
@@ -557,32 +416,30 @@ function HomeContent() {
     }
 
     // Preset selected, add or remove shift
-    const calendarData = compareCalendarData.get(calendarId);
-    if (!calendarData) return;
-
-    const preset = calendarData.presets.find((p) => p.id === selectedPresetId);
+    const presets = compareData.presetsMap.get(calendarId) || [];
+    const shifts = compareData.shiftsMap.get(calendarId) || [];
+    const preset = presets.find((p) => p.id === selectedPresetId);
     if (!preset) return;
 
     const dateKey = formatDateToLocal(targetDate);
 
     // Check if already toggling
-    if (calendarData.togglingDates.has(dateKey)) return;
+    const togglingDates = compareTogglingDates.get(calendarId) || new Set();
+    if (togglingDates.has(dateKey)) return;
 
     // Mark as toggling
-    const newTogglingDates = new Set(calendarData.togglingDates);
-    newTogglingDates.add(dateKey);
-    setCompareCalendarData((prev) => {
+    setCompareTogglingDates((prev) => {
       const updated = new Map(prev);
-      const data = updated.get(calendarId);
-      if (data) {
-        updated.set(calendarId, { ...data, togglingDates: newTogglingDates });
-      }
+      const current = updated.get(calendarId) || new Set();
+      const newSet = new Set(current);
+      newSet.add(dateKey);
+      updated.set(calendarId, newSet);
       return updated;
     });
 
     try {
       // Check if shift already exists
-      const existingShift = calendarData.shifts.find(
+      const existingShift = shifts.find(
         (shift) =>
           shift.date &&
           isSameDay(shift.date as Date, targetDate) &&
@@ -592,36 +449,14 @@ function HomeContent() {
       );
 
       if (existingShift) {
-        // Delete existing shift
-        const response = await fetch(`/api/shifts/${existingShift.id}`, {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-        });
-
-        if (!response.ok) {
-          toast.error(t("common.deleteError", { item: t("shift.shift_one") }));
-        } else {
-          toast.success(t("common.deleted", { item: t("shift.shift_one") }));
-          // Reload shifts for this calendar
-          const shiftsRes = await fetch(`/api/shifts?calendarId=${calendarId}`);
-          const shiftsData = shiftsRes.ok ? await shiftsRes.json() : [];
-          setCompareCalendarData((prev) => {
-            const updated = new Map(prev);
-            const data = updated.get(calendarId);
-            if (data) {
-              updated.set(calendarId, {
-                ...data,
-                shifts: shiftsData.map(normalizeShift),
-              });
-            }
-            return updated;
-          });
-          setStatsRefreshTrigger((prev) => prev + 1);
-        }
-      } else {
-        // Create new shift
-        const shiftData = {
+        // Delete existing shift using mutation
+        await compareData.deleteShift({
           calendarId,
+          shiftId: existingShift.id,
+        });
+      } else {
+        // Create new shift using mutation
+        const shiftData = {
           date: dateKey,
           startTime: preset.startTime,
           endTime: preset.endTime,
@@ -632,46 +467,19 @@ function HomeContent() {
           isAllDay: preset.isAllDay || false,
         };
 
-        const response = await fetch("/api/shifts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(shiftData),
-        });
-
-        if (!response.ok) {
-          toast.error(t("common.createError", { item: t("shift.shift_one") }));
-        } else {
-          toast.success(t("common.created", { item: t("shift.shift_one") }));
-          // Reload shifts for this calendar
-          const shiftsRes = await fetch(`/api/shifts?calendarId=${calendarId}`);
-          const shiftsData = shiftsRes.ok ? await shiftsRes.json() : [];
-          setCompareCalendarData((prev) => {
-            const updated = new Map(prev);
-            const data = updated.get(calendarId);
-            if (data) {
-              updated.set(calendarId, {
-                ...data,
-                shifts: shiftsData.map(normalizeShift),
-              });
-            }
-            return updated;
-          });
-          setStatsRefreshTrigger((prev) => prev + 1);
-        }
+        await compareData.createShift({ calendarId, formData: shiftData });
       }
     } catch (error) {
       console.error("Failed to toggle shift:", error);
       toast.error(t("common.error"));
     } finally {
       // Remove toggling state
-      setCompareCalendarData((prev) => {
+      setCompareTogglingDates((prev) => {
         const updated = new Map(prev);
-        const data = updated.get(calendarId);
-        if (data) {
-          const newTogglingDates = new Set(data.togglingDates);
-          newTogglingDates.delete(dateKey);
-          updated.set(calendarId, { ...data, togglingDates: newTogglingDates });
-        }
+        const current = updated.get(calendarId) || new Set();
+        const newSet = new Set(current);
+        newSet.delete(dateKey);
+        updated.set(calendarId, newSet);
         return updated;
       });
     }
@@ -683,11 +491,10 @@ function HomeContent() {
     date: Date
   ) => {
     e.preventDefault();
-    const calendarData = compareCalendarData.get(calendarId);
-    if (!calendarData) return;
+    const calendarNotes = compareData.notesMap.get(calendarId) || [];
 
     // Get all notes/events for this date (including recurring)
-    const allDayNotes = findNotesForDate(calendarData.notes, date);
+    const allDayNotes = findNotesForDate(calendarNotes, date);
 
     // Always show list dialog when notes exist (to allow adding more)
     if (allDayNotes.length >= 1) {
@@ -708,11 +515,10 @@ function HomeContent() {
     date: Date
   ) => {
     e.stopPropagation();
-    const calendarData = compareCalendarData.get(calendarId);
-    if (!calendarData) return;
+    const calendarNotes = compareData.notesMap.get(calendarId) || [];
 
     // Get all notes/events for this date (including recurring)
-    const allDayNotes = findNotesForDate(calendarData.notes, date);
+    const allDayNotes = findNotesForDate(calendarNotes, date);
 
     // Always show list dialog when notes exist (to allow adding more)
     if (allDayNotes.length >= 1) {
@@ -728,11 +534,10 @@ function HomeContent() {
   };
 
   const handleCompareLongPress = (calendarId: string, date: Date) => {
-    const calendarData = compareCalendarData.get(calendarId);
-    if (!calendarData) return;
+    const calendarNotes = compareData.notesMap.get(calendarId) || [];
 
     // Get all notes/events for this date (including recurring)
-    const allDayNotes = findNotesForDate(calendarData.notes, date);
+    const allDayNotes = findNotesForDate(calendarNotes, date);
 
     // Always show list dialog when notes exist (to allow adding more)
     if (allDayNotes.length >= 1) {
@@ -783,9 +588,15 @@ function HomeContent() {
   // If in compare mode, render compare view
   if (isCompareMode) {
     // Show loader while loading compare data
-    if (compareDataLoading) {
+    if (compareData.isLoading) {
       return <FullscreenLoader message={t("common.loading")} />;
     }
+
+    // Build togglingDatesMap from local state
+    const togglingDatesMap = new Map<string, Set<string>>();
+    selectedCompareIds.forEach((id) => {
+      togglingDatesMap.set(id, compareTogglingDates.get(id) || new Set());
+    });
 
     return (
       <>
@@ -796,48 +607,13 @@ function HomeContent() {
           calendarDays={calendarDays}
           currentDate={currentDate}
           onDateChange={setCurrentDate}
-          shiftsMap={
-            new Map(
-              Array.from(compareCalendarData.entries()).map(([id, data]) => [
-                id,
-                data.shifts,
-              ])
-            )
-          }
-          notesMap={
-            new Map(
-              Array.from(compareCalendarData.entries()).map(([id, data]) => [
-                id,
-                data.notes,
-              ])
-            )
-          }
-          externalSyncsMap={
-            new Map(
-              Array.from(compareCalendarData.entries()).map(([id, data]) => [
-                id,
-                data.externalSyncs,
-              ])
-            )
-          }
-          presetsMap={
-            new Map(
-              Array.from(compareCalendarData.entries()).map(([id, data]) => [
-                id,
-                data.presets || [],
-              ])
-            )
-          }
+          shiftsMap={compareData.shiftsMap}
+          notesMap={compareData.notesMap}
+          externalSyncsMap={compareData.externalSyncsMap}
+          presetsMap={compareData.presetsMap}
           selectedPresetId={selectedPresetId}
           onSelectPreset={setSelectedPresetId}
-          togglingDatesMap={
-            new Map(
-              Array.from(compareCalendarData.entries()).map(([id, data]) => [
-                id,
-                data.togglingDates,
-              ])
-            )
-          }
+          togglingDatesMap={togglingDatesMap}
           maxShiftsToShow={
             viewSettings.shiftsPerDay === null
               ? undefined
@@ -855,7 +631,6 @@ function HomeContent() {
           combinedSortMode={viewSettings.combinedSortMode}
           highlightedWeekdays={viewSettings.highlightedWeekdays}
           highlightColor={viewSettings.highlightColor}
-          statsRefreshTrigger={statsRefreshTrigger}
           locale={dateLocale}
           onDayClick={handleCompareDayClick}
           onDayRightClick={handleCompareDayRightClick}
@@ -869,80 +644,22 @@ function HomeContent() {
           onExit={handleExitCompare}
           hidePresetHeader={viewSettings.hidePresetHeader}
           onHidePresetHeaderChange={viewSettings.handleHidePresetHeaderChange}
-          onPresetsChange={async (calendarId: string) => {
-            // Reload presets and shifts for specific calendar
-            try {
-              const [presetsRes, shiftsRes] = await Promise.all([
-                fetch(`/api/presets?calendarId=${calendarId}`),
-                fetch(`/api/shifts?calendarId=${calendarId}`),
-              ]);
-
-              const [presetsData, shiftsData] = await Promise.all([
-                presetsRes.ok ? presetsRes.json() : [],
-                shiftsRes.ok ? shiftsRes.json() : [],
-              ]);
-
-              setCompareCalendarData((prev) => {
-                const updated = new Map(prev);
-                const data = updated.get(calendarId);
-                if (data) {
-                  updated.set(calendarId, {
-                    ...data,
-                    presets: presetsData,
-                    shifts: shiftsData.map(normalizeShift),
-                  });
-                }
-                return updated;
-              });
-              setStatsRefreshTrigger((prev) => prev + 1);
-            } catch (error) {
-              console.error(
-                `Error reloading presets for calendar ${calendarId}:`,
-                error
-              );
-            }
+          onPresetsChange={(calendarId: string) => {
+            // Invalidate presets and shifts cache for this calendar
+            compareData.invalidatePresets(calendarId);
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.shifts.byCalendar(calendarId),
+            });
           }}
           onShiftsChange={() => {
-            // Reload shifts for all calendars
-            const loadShifts = async () => {
-              // Build updates for each calendar in parallel
-              const updates = new Map<string, Shift[]>();
-              await Promise.all(
-                selectedCompareIds.map(async (calendarId) => {
-                  try {
-                    const shiftsRes = await fetch(
-                      `/api/shifts?calendarId=${calendarId}`
-                    );
-                    const shiftsData = shiftsRes.ok
-                      ? await shiftsRes.json()
-                      : [];
-                    updates.set(calendarId, shiftsData);
-                  } catch (error) {
-                    console.error(
-                      `Error loading shifts for calendar ${calendarId}:`,
-                      error
-                    );
-                  }
-                })
-              );
-              // Apply updates using functional state updater
-              setCompareCalendarData((prev) => {
-                const dataMap = new Map(prev);
-                for (const [calendarId, shiftsData] of updates.entries()) {
-                  const currentData = dataMap.get(calendarId);
-                  if (currentData) {
-                    dataMap.set(calendarId, {
-                      ...currentData,
-                      shifts: shiftsData.map(normalizeShift),
-                    });
-                  }
-                }
-                return dataMap;
+            // Invalidate shifts cache for all compare calendars
+            selectedCompareIds.forEach((calendarId) => {
+              queryClient.invalidateQueries({
+                queryKey: queryKeys.shifts.byCalendar(calendarId),
               });
-            };
-            loadShifts();
+            });
           }}
-          onStatsRefresh={() => setStatsRefreshTrigger((prev) => prev + 1)}
+          presetsLoadingMap={compareData.presetsLoadingMap}
         />
 
         {/* Dialogs still work in compare mode */}
@@ -955,7 +672,6 @@ function HomeContent() {
           onShiftSubmit={shiftActions.handleShiftSubmit}
           selectedDate={selectedDate}
           selectedCalendar={selectedCalendar || null}
-          onPresetsChange={refetchPresets}
           calendars={calendars}
           showCalendarSettingsDialog={dialogStates.showCalendarSettingsDialog}
           onCalendarSettingsDialogChange={
@@ -968,14 +684,11 @@ function HomeContent() {
           }
           showExternalSyncDialog={dialogStates.showExternalSyncDialog}
           onExternalSyncDialogChange={dialogStates.setShowExternalSyncDialog}
-          syncErrorRefreshTrigger={syncLogRefreshTrigger}
           onSyncComplete={handleSyncComplete}
           showSyncNotificationDialog={dialogStates.showSyncNotificationDialog}
           onSyncNotificationDialogChange={
             dialogStates.setShowSyncNotificationDialog
           }
-          onErrorsMarkedRead={fetchSyncErrorStatus}
-          onSyncLogUpdate={() => setSyncLogRefreshTrigger((prev) => prev + 1)}
           showDayShiftsDialog={dialogStates.showDayShiftsDialog}
           onDayShiftsDialogChange={dialogStates.setShowDayShiftsDialog}
           selectedDayDate={dialogStates.selectedDayDate}
@@ -1046,7 +759,6 @@ function HomeContent() {
           onShiftSubmit={shiftActions.handleShiftSubmit}
           selectedDate={selectedDate}
           selectedCalendar={selectedCalendar || null}
-          onPresetsChange={refetchPresets}
           calendars={calendars}
           showCalendarSettingsDialog={dialogStates.showCalendarSettingsDialog}
           onCalendarSettingsDialogChange={
@@ -1059,14 +771,11 @@ function HomeContent() {
           }
           showExternalSyncDialog={dialogStates.showExternalSyncDialog}
           onExternalSyncDialogChange={dialogStates.setShowExternalSyncDialog}
-          syncErrorRefreshTrigger={syncLogRefreshTrigger}
           onSyncComplete={handleSyncComplete}
           showSyncNotificationDialog={dialogStates.showSyncNotificationDialog}
           onSyncNotificationDialogChange={
             dialogStates.setShowSyncNotificationDialog
           }
-          onErrorsMarkedRead={fetchSyncErrorStatus}
-          onSyncLogUpdate={() => setSyncLogRefreshTrigger((prev) => prev + 1)}
           showDayShiftsDialog={dialogStates.showDayShiftsDialog}
           onDayShiftsDialogChange={dialogStates.setShowDayShiftsDialog}
           selectedDayDate={dialogStates.selectedDayDate}
@@ -1135,7 +844,6 @@ function HomeContent() {
         selectedCalendar={selectedCalendar}
         presets={presets}
         selectedPresetId={selectedPresetId}
-        isConnected={isConnected}
         showMobileCalendarDialog={dialogStates.showMobileCalendarDialog}
         hasSyncErrors={hasSyncErrors}
         onSelectCalendar={setSelectedCalendar}
@@ -1144,9 +852,7 @@ function HomeContent() {
         onSettings={() => dialogStates.setShowCalendarSettingsDialog(true)}
         onSyncNotifications={handleSyncNotifications}
         onCompare={handleCompareClick}
-        onPresetsChange={refetchPresets}
         onShiftsChange={refetchShifts}
-        onStatsRefresh={() => setStatsRefreshTrigger((prev) => prev + 1)}
         onManualShiftCreation={handleManualShiftCreation}
         onMobileCalendarDialogChange={dialogStates.setShowMobileCalendarDialog}
         onViewSettingsClick={() => dialogStates.setShowViewSettingsDialog(true)}
@@ -1183,7 +889,6 @@ function HomeContent() {
           highlightedWeekdays={viewSettings.highlightedWeekdays}
           highlightColor={viewSettings.highlightColor}
           selectedCalendar={selectedCalendar || null}
-          statsRefreshTrigger={statsRefreshTrigger}
           locale={dateLocale}
           onDayClick={handleDayClick}
           onDayRightClick={handleDayRightClick}
@@ -1223,7 +928,6 @@ function HomeContent() {
         onShiftSubmit={shiftActions.handleShiftSubmit}
         selectedDate={selectedDate}
         selectedCalendar={selectedCalendar || null}
-        onPresetsChange={refetchPresets}
         calendars={calendars}
         showCalendarSettingsDialog={dialogStates.showCalendarSettingsDialog}
         onCalendarSettingsDialogChange={
@@ -1236,14 +940,11 @@ function HomeContent() {
         }
         showExternalSyncDialog={dialogStates.showExternalSyncDialog}
         onExternalSyncDialogChange={dialogStates.setShowExternalSyncDialog}
-        syncErrorRefreshTrigger={syncLogRefreshTrigger}
         onSyncComplete={handleSyncComplete}
         showSyncNotificationDialog={dialogStates.showSyncNotificationDialog}
         onSyncNotificationDialogChange={
           dialogStates.setShowSyncNotificationDialog
         }
-        onErrorsMarkedRead={fetchSyncErrorStatus}
-        onSyncLogUpdate={() => setSyncLogRefreshTrigger((prev) => prev + 1)}
         showDayShiftsDialog={dialogStates.showDayShiftsDialog}
         onDayShiftsDialogChange={dialogStates.setShowDayShiftsDialog}
         selectedDayDate={dialogStates.selectedDayDate}
