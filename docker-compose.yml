@@ -1,15 +1,57 @@
 services:
-  bettershift:
-    image: ghcr.io/pantelx/bettershift:latest
-    # Or build the image locally using the Dockerfile
-    # build:
-    #   context: .
-    #   dockerfile: Dockerfile
-    container_name: bettershift
+  dienstato:
+    # Build from local Dockerfile (clone from https://github.com/phontary/Dienstato.git)
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: "2.2.0"
+    # Or use pre-built image from GitHub Container Registry
+    # image: ghcr.io/phontary/dienstato:latest
+    container_name: dienstato
     restart: unless-stopped
     ports:
       - "3000:3000"
     volumes:
-      - ./data:/app/data
+      - ./data:/app/data          # SQLite database storage
+      - ./temp:/app/temp          # Temporary files (PDF generation)
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=file:./data/sqlite.db
     env_file:
       - .env
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Optional: Email queue processor (runs as a cron job)
+  # Uncomment to run email processing in a separate container
+  # dienstato-email-processor:
+  #   image: curlimages/curl:latest
+  #   container_name: dienstato-email-processor
+  #   restart: unless-stopped
+  #   depends_on:
+  #     - dienstato
+  #   command: >
+  #     sh -c "while true; do
+  #       sleep 300;
+  #       curl -X POST http://dienstato:3000/api/emails/process-queue
+  #         -H 'Authorization: Bearer ${CRON_SECRET}';
+  #     done"
+
+  # Optional: Monthly report processor (runs daily)
+  # dienstato-report-processor:
+  #   image: curlimages/curl:latest
+  #   container_name: dienstato-report-processor
+  #   restart: unless-stopped
+  #   depends_on:
+  #     - dienstato
+  #   command: >
+  #     sh -c "while true; do
+  #       sleep 86400;
+  #       curl -X POST http://dienstato:3000/api/emails/process-monthly-reports
+  #         -H 'Authorization: Bearer ${CRON_SECRET}';
+  #     done"
