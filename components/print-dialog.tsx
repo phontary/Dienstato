@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Button } from "@/components/ui/button";
 import { Printer } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { format, getDaysInMonth, startOfMonth, getDay } from "date-fns";
+import { format, getDaysInMonth } from "date-fns";
 import { ShiftWithCalendar } from "@/lib/types";
 import { de, enUS, it } from "date-fns/locale";
 
@@ -27,8 +27,6 @@ export function PrintDialog({ currentDate, shifts, locale = "en" }: PrintDialogP
 
   const handlePrint = () => {
     const daysInMonth = getDaysInMonth(currentDate);
-    const monthStart = startOfMonth(currentDate);
-    const firstDayOfWeek = getDay(monthStart);
     const dateLocale = localeMap[locale as keyof typeof localeMap] || enUS;
 
     const monthName = format(currentDate, "MMMM yyyy", { locale: dateLocale });
@@ -36,6 +34,7 @@ export function PrintDialog({ currentDate, shifts, locale = "en" }: PrintDialogP
     // Group shifts by date
     const shiftsByDate: Record<string, ShiftWithCalendar[]> = {};
     shifts.forEach((shift) => {
+      if (!shift.date) return;
       const dateKey = format(shift.date, "yyyy-MM-dd");
       if (!shiftsByDate[dateKey]) {
         shiftsByDate[dateKey] = [];
@@ -181,7 +180,7 @@ export function PrintDialog({ currentDate, shifts, locale = "en" }: PrintDialogP
             </p>
             <p className="text-sm text-muted-foreground">
               <strong>{t("print.shiftsCount")}:</strong> {shifts.filter(s =>
-                s.date.getMonth() === currentDate.getMonth() &&
+                s.date && s.date.getMonth() === currentDate.getMonth() &&
                 s.date.getFullYear() === currentDate.getFullYear()
               ).length}
             </p>

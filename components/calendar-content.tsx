@@ -31,6 +31,7 @@ interface CalendarContentProps {
   highlightColor?: string;
   selectedCalendar: string | null;
   locale?: Locale;
+  localeString?: string;
   onDayClick: (date: Date) => void;
   onDayRightClick?: (e: React.MouseEvent, date: Date) => void;
   onNoteIconClick?: (e: React.MouseEvent, date: Date) => void;
@@ -52,7 +53,7 @@ export function CalendarContent(props: CalendarContentProps) {
         onDateChange={props.onDateChange}
         locale={props.locale}
         shifts={props.shifts}
-        localeString={typeof props.locale === 'object' && 'code' in props.locale ? props.locale.code : 'en'}
+        localeString={props.localeString || 'en'}
       />
 
       {/* Guest Banner - compact on mobile, default on desktop */}

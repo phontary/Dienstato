@@ -921,6 +921,7 @@ function HomeContent() {
           highlightColor={viewSettings.highlightColor}
           selectedCalendar={selectedCalendar || null}
           locale={dateLocale}
+          localeString={locale}
           onDayClick={handleDayClick}
           onDayRightClick={handleDayRightClick}
           onNoteIconClick={handleNoteIconClick}
