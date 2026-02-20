@@ -2,17 +2,23 @@ import { motion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { format, addMonths, subMonths, Locale } from "date-fns";
+import { PrintDialog } from "@/components/print-dialog";
+import { ShiftWithCalendar } from "@/lib/types";
 
 interface MonthNavigationProps {
   currentDate: Date;
   onDateChange: (date: Date) => void;
   locale?: Locale;
+  shifts?: ShiftWithCalendar[];
+  localeString?: string;
 }
 
 export function MonthNavigation({
   currentDate,
   onDateChange,
   locale,
+  shifts = [],
+  localeString = "en",
 }: MonthNavigationProps) {
   return (
     <motion.div
@@ -38,14 +44,21 @@ export function MonthNavigation({
       >
         {format(currentDate, "MMMM yyyy", { locale })}
       </motion.h2>
-      <Button
-        variant="outline"
-        size="icon"
-        className="h-10 w-10 sm:h-11 sm:w-11 rounded-full active:scale-95 transition-transform"
-        onClick={() => onDateChange(addMonths(currentDate, 1))}
-      >
-        <ChevronRight className="h-5 w-5" />
-      </Button>
+      <div className="flex gap-2">
+        <PrintDialog
+          currentDate={currentDate}
+          shifts={shifts}
+          locale={localeString}
+        />
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-10 w-10 sm:h-11 sm:w-11 rounded-full active:scale-95 transition-transform"
+          onClick={() => onDateChange(addMonths(currentDate, 1))}
+        >
+          <ChevronRight className="h-5 w-5" />
+        </Button>
+      </div>
     </motion.div>
   );
 }

@@ -621,6 +621,13 @@
     "security": "Sicurezza",
     "calendar": "Calendario"
   },
+  "print": {
+    "title": "Stampa Calendario",
+    "description": "Stampa il mese corrente in formato tabella",
+    "monthLabel": "Mese",
+    "shiftsCount": "Turni",
+    "print": "Stampa"
+  },
   "admin": {
     "title": "Pannello Admin",
     "adminPanel": "Pannello Admin",

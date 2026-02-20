@@ -51,6 +51,8 @@ export function CalendarContent(props: CalendarContentProps) {
         currentDate={props.currentDate}
         onDateChange={props.onDateChange}
         locale={props.locale}
+        shifts={props.shifts}
+        localeString={typeof props.locale === 'object' && 'code' in props.locale ? props.locale.code : 'en'}
       />
 
       {/* Guest Banner - compact on mobile, default on desktop */}

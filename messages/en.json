@@ -621,6 +621,13 @@
     "security": "Security",
     "calendar": "Calendar"
   },
+  "print": {
+    "title": "Print Calendar",
+    "description": "Print the current month in a table format",
+    "monthLabel": "Month",
+    "shiftsCount": "Shifts",
+    "print": "Print"
+  },
   "admin": {
     "title": "Admin Panel",
     "adminPanel": "Admin Panel",
